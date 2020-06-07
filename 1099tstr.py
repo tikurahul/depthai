@@ -85,10 +85,10 @@ def pwroff():
 
 def moddetect():
     if GPIO.input(13)==True: #Mounting module grounds GPIO, so logic is inverted. 
-        print("No module detected. Please mount module and retry.")
+        print("No module detected. Please mount BW1099 module and retry.")
         return(False)
     else:
-        print("Module detected.")
+        print("Module detected!")
         return(True)
         
 def rundepthai():
@@ -99,9 +99,6 @@ def rundepthai():
 
     atexit.register(cleanup)
     p = subprocess.run(test_cmd, shell=True)
-    all_processes.append(p)
-    #print("Testing for 10 seconds...")
-    #time.sleep(10)
     return_code = p.returncode
     print("Return code:"+str(return_code))
     all_processes.clear()
