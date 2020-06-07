@@ -1,0 +1,8 @@
+#!/bin/bash
+echo Loading OpenVINO Paths
+source /opt/intel/openvino/bin/setupvars.sh
+source /home/pi/.bashrc
+echo Booting DepthAI
+cd /home/pi/Desktop/depthai
+python3 1099tstr.py
+sleep 60
