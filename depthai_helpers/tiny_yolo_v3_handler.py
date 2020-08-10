@@ -9,18 +9,13 @@ detection_threshold = 0.60
 
 class YoloParams:
     # ------------------------------------------- Extracting layer parameters ------------------------------------------
-    def __init__(self, side):
+    def __init__(self, side, mask, coords, classes, anchors):
         self.num = 3 
-        self.coords = 4 
-        self.classes = 80
-        self.anchors = [10,14, 23,27, 37,58, 81,82, 135,169, 344,319]
+        self.coords = coords 
+        self.classes = classes
+        self.anchors = anchors
 
-        if side == 26:
-            mask=[1,2,3]
-            self.num = len(mask)
-        else:
-            mask=[3,4,5]
-            self.num = len(mask)
+        self.num = len(mask)
 
         maskedAnchors = []
         for idx in mask:
@@ -160,8 +155,13 @@ def decode_tiny_yolo(nnet_packet, **kwargs):
 
         start_time = time()
         for out_blob in output_list:
-
-            l_params = YoloParams(out_blob.shape[2])
+            side = out_blob.shape[2]
+            side_str = 'side' + str(side)
+            mask = NN_metadata['NN_config']['NN_specific_metadata']['anchor_masks'][side_str]
+            coords = NN_metadata['NN_config']['NN_specific_metadata']['coordinates']
+            classes = NN_metadata['NN_config']['NN_specific_metadata']['classes']
+            anchors = NN_metadata['NN_config']['NN_specific_metadata']['anchors']
+            l_params = YoloParams(side, mask, coords, classes, anchors)
             objects += parse_yolo_region(out_blob,  resized_image_shape,
                                                 original_image_shape, l_params,
                                                 detection_threshold)

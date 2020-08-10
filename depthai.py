@@ -62,7 +62,7 @@ if args['cnn_model'] == 'emotions-recognition-retail-0003':
     show_nn=show_emotion_recognition
     calc_dist_to_bb=False
 
-if args['cnn_model'] == 'tiny-yolo-v3':
+if args['cnn_model'] in ['tiny-yolo-v3', 'yolo-v3']:
     from depthai_helpers.tiny_yolo_v3_handler import decode_tiny_yolo, show_tiny_yolo
     decode_nn=decode_tiny_yolo
     show_nn=show_tiny_yolo
