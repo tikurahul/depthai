@@ -66,7 +66,6 @@ if args['cnn_model'] == 'tiny-yolo-v3':
     from depthai_helpers.tiny_yolo_v3_handler import decode_tiny_yolo, show_tiny_yolo
     decode_nn=decode_tiny_yolo
     show_nn=show_tiny_yolo
-    calc_dist_to_bb=False
     compile_model=False
 
 if args['cnn_model'] in ['facial-landmarks-35-adas-0002', 'landmarks-regression-retail-0009']:
@@ -78,10 +77,7 @@ if args['cnn_model'] in ['facial-landmarks-35-adas-0002', 'landmarks-regression-
 if args['cnn_model']:
     cnn_model_path = consts.resource_paths.nn_resource_path + args['cnn_model']+ "/" + args['cnn_model']
     blob_file = cnn_model_path + ".blob"
-    suffix=""
-    if calc_dist_to_bb:
-        suffix="_depth"
-    blob_file_config = cnn_model_path + suffix + ".json"
+    blob_file_config = cnn_model_path + ".json"
 
 blob_file2 = ""
 blob_file_config2 = ""
@@ -110,10 +106,21 @@ if not blob_file_config_path.exists():
     os._exit(1)
 
 with open(blob_file_config) as f:
-    data = json.load(f)
+    if f is not None:
+        NN_json = json.load(f)
+        f.close()
 
 try:
-    labels = data['mappings']['labels']
+    output_format = NN_json['NN_config']['output_format']
+except:
+    print("s")
+    output_format = "raw"
+
+if output_format == "raw" and calc_dist_to_bb == True:
+    cli_print("WARNING: Depth calculation with raw output format is not supported! It's only supported for YOLO/mobilenet based NNs, disabling calc_dist_to_bb", PrintColors.WARNING)
+    calc_dist_to_bb = False
+try:
+    labels = NN_json['mappings']['labels']
 except:
     labels = None
     print("Labels not found in json!")
@@ -396,7 +403,7 @@ while True:
     for _, nnet_packet in enumerate(nnet_packets):
         camera = nnet_packet.getMetadata().getCameraName()
         nnet_prev["nnet_source"][camera] = nnet_packet
-        nnet_prev["entries_prev"][camera] = decode_nn(nnet_packet, config=config)
+        nnet_prev["entries_prev"][camera] = decode_nn(nnet_packet, config=config, NN_json=NN_json)
         frame_count['metaout'] += 1
         frame_count['nn'][camera] += 1
 
@@ -418,7 +425,7 @@ while True:
             data2 = packetData[2,:,:]
             frame = cv2.merge([data0, data1, data2])
             if nnet_prev["entries_prev"][camera] is not None:
-                frame = show_nn(nnet_prev["entries_prev"][camera], frame, labels=labels, config=config)
+                frame = show_nn(nnet_prev["entries_prev"][camera], frame, NN_json=NN_json, config=config)
                 if enable_object_tracker and tracklets is not None:
                     frame = show_tracklets(tracklets, frame, labels)
             cv2.putText(frame, "fps: " + str(frame_count_prev[window_name]), (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0))
@@ -436,7 +443,7 @@ while True:
                 elif camera != 'rgb':
                     camera = packet.getMetadata().getCameraName()
                 if nnet_prev["entries_prev"][camera] is not None:
-                    frame_bgr = show_nn(nnet_prev["entries_prev"][camera], frame_bgr, labels=labels, config=config, nn2depth=nn2depth)
+                    frame_bgr = show_nn(nnet_prev["entries_prev"][camera], frame_bgr, NN_json=NN_json, config=config, nn2depth=nn2depth)
             cv2.imshow(window_name, frame_bgr)
         elif packet.stream_name.startswith('depth') or packet.stream_name == 'disparity_color':
             frame = packetData
@@ -461,7 +468,7 @@ while True:
                 if camera == 'left_right':
                     camera = 'right'
                 if nnet_prev["entries_prev"][camera] is not None:
-                    frame = show_nn(nnet_prev["entries_prev"][camera], frame, labels=labels, config=config, nn2depth=nn2depth)
+                    frame = show_nn(nnet_prev["entries_prev"][camera], frame, NN_json=NN_json, config=config, nn2depth=nn2depth)
             cv2.imshow(window_name, frame)
 
         elif packet.stream_name == 'jpegout':

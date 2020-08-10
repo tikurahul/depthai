@@ -6,7 +6,6 @@ from depthai_helpers.tensor_utils import get_tensor_output, get_tensor_outputs_l
 
 # Adjust these thresholds
 detection_threshold = 0.60
-IOU_THRESHOLD = 0.4
 
 class YoloParams:
     # ------------------------------------------- Extracting layer parameters ------------------------------------------
@@ -16,7 +15,7 @@ class YoloParams:
         self.classes = 80
         self.anchors = [10,14, 23,27, 37,58, 81,82, 135,169, 344,319]
 
-        if side ==26:
+        if side == 26:
             mask=[1,2,3]
             self.num = len(mask)
         else:
@@ -120,45 +119,64 @@ def intersection_over_union(box_1, box_2):
 
 
 def decode_tiny_yolo(nnet_packet, **kwargs):
+    NN_metadata = kwargs['NN_json']
+    output_format = NN_metadata['NN_config']['output_format']
 
-    output_list = get_tensor_outputs_list(nnet_packet)
+    if output_format == "detection":
+        objects = list()
+        detection_nr = nnet_packet.getDetectionCount()
+        for i in range(detection_nr):
+            detection = nnet_packet.getDetectedObject(i)
+            score = detection.get_score()
+            detection = nnet_packet.getDetectedObject(i)
+            class_id = detection.get_label_id()
+            xmin = int(detection.get_xmin() * 416)
+            xmax = int(detection.get_xmax() * 416)
+            ymin = int(detection.get_ymin() * 416)
+            ymax = int(detection.get_ymax() * 416)
+            distance_x = detection.get_depth_x()
+            distance_y = detection.get_depth_y()
+            distance_z = detection.get_depth_z()
+            scaled_object = dict(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, class_id=class_id, confidence=score, depth_x=distance_x, depth_y=distance_y, depth_z=distance_z)
+            objects.append(scaled_object)
 
-     
-    #render_time = 0
-    #parsing_time = 0
+        return objects
+    else:
+        
+        output_list = get_tensor_outputs_list(nnet_packet)
 
-    # ----------------------------------------------- 6. Doing inference -----------------------------------------------
-    #log.info("Starting inference...")
+        
+        #render_time = 0
+        #parsing_time = 0
 
-    objects = list()
-    resized_image_shape =[416,416]
-    original_image_shape =[416,416]
-    threshold = 0.5
-    iou_threshold=0.5
+        # ----------------------------------------------- 6. Doing inference -----------------------------------------------
+        #log.info("Starting inference...")
+
+        objects = list()
+        resized_image_shape =[416,416]
+        original_image_shape =[416,416]
+        iou_threshold = NN_metadata['NN_config']['NN_specific_metadata']['iou_threshold']
 
 
-    start_time = time()
-    for out_blob in output_list:
-        print(out_blob.shape)
-        print(out_blob.nbytes)
+        start_time = time()
+        for out_blob in output_list:
 
-        l_params = YoloParams(out_blob.shape[2])
-        objects += parse_yolo_region(out_blob,  resized_image_shape,
-                                             original_image_shape, l_params,
-                                             threshold)
-        parsing_time = time() - start_time
+            l_params = YoloParams(out_blob.shape[2])
+            objects += parse_yolo_region(out_blob,  resized_image_shape,
+                                                original_image_shape, l_params,
+                                                detection_threshold)
+            parsing_time = time() - start_time
 
         # Filtering overlapping boxes with respect to the --iou_threshold CLI parameter
-    objects = sorted(objects, key=lambda obj : obj['confidence'], reverse=True)
-    for i in range(len(objects)):
-        if objects[i]['confidence'] == 0:
-            continue
-        for j in range(i + 1, len(objects)):
-            if intersection_over_union(objects[i], objects[j]) > iou_threshold:
-                    objects[j]['confidence'] = 0
-   
-    filtered_objects=objects
-    return filtered_objects
+        objects = sorted(objects, key=lambda obj : obj['confidence'], reverse=True)
+        for i in range(len(objects)):
+            if objects[i]['confidence'] == 0:
+                continue
+            for j in range(i + 1, len(objects)):
+                if intersection_over_union(objects[i], objects[j]) > iou_threshold:
+                        objects[j]['confidence'] = 0
+    
+        return objects
 
 BOX_COLOR = (0,255,0)
 LABEL_BG_COLOR = (70, 120, 70) # greyish green background for text
@@ -166,7 +184,10 @@ TEXT_COLOR = (255, 255, 255)   # white text
 TEXT_FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 def show_tiny_yolo(filtered_objects, frame, **kwargs):
-    labels = kwargs['labels']
+    NN_metadata = kwargs['NN_json']
+    labels = NN_metadata['mappings']['labels']
+    config = kwargs['config']
+
     filtered_objects = [obj for obj in filtered_objects if obj['confidence'] >= detection_threshold]
     for object_index in range(len(filtered_objects)):
         
@@ -183,4 +204,11 @@ def show_tiny_yolo(filtered_objects, frame, **kwargs):
         cv2.putText(frame, labels[class_id] + ': %.2f' % confidence, (xmin+5, ymin+15), TEXT_FONT, 0.5, TEXT_COLOR, 1)
             # Set up the bounding box
         cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), BOX_COLOR, 1)
+        if config['ai']['calc_dist_to_bb']:
+            distance_x = filtered_objects[object_index]['depth_x']
+            distance_y = filtered_objects[object_index]['depth_y']
+            distance_z = filtered_objects[object_index]['depth_z']
+            cv2.putText(frame, 'x:' '{:7.3f}'.format(distance_x) + ' m', (xmin, ymin+60),  TEXT_FONT, 0.5, TEXT_COLOR)
+            cv2.putText(frame, 'y:' '{:7.3f}'.format(distance_y) + ' m', (xmin, ymin+80),  TEXT_FONT, 0.5, TEXT_COLOR)
+            cv2.putText(frame, 'z:' '{:7.3f}'.format(distance_z) + ' m', (xmin, ymin+100), TEXT_FONT, 0.5, TEXT_COLOR)
     return frame
