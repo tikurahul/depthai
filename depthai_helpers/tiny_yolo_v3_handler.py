@@ -3,8 +3,6 @@ import cv2
 import numpy as np
 from time import time
 
-# Adjust these thresholds
-detection_threshold = 0.60
 
 class YoloParams:
     # ------------------------------------------- Extracting layer parameters ------------------------------------------
@@ -121,29 +119,22 @@ def decode_tiny_yolo(nnet_packet, **kwargs):
         detection_nr = nnet_packet.getDetectionCount()
         for i in range(detection_nr):
             detection = nnet_packet.getDetectedObject(i)
-            score = detection.score
+            confidence = detection.confidence
             class_id = detection.label
             xmin = int(detection.x_min * 416)
             xmax = int(detection.x_max * 416)
             ymin = int(detection.y_min * 416)
             ymax = int(detection.y_max * 416)
-            distance_x = detection.depth_x
-            distance_y = detection.depth_y
-            distance_z = detection.depth_z
-            scaled_object = dict(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, class_id=class_id, confidence=score, depth_x=distance_x, depth_y=distance_y, depth_z=distance_z)
+            depth_x = detection.depth_x
+            depth_y = detection.depth_y
+            depth_z = detection.depth_z
+            scaled_object = dict(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, class_id=class_id, confidence=confidence, depth_x=depth_x, depth_y=depth_y, depth_z=depth_z)
             objects.append(scaled_object)
 
         return objects
     else:
         
         output_list = nnet_packet.getOutputsList()
-
-        
-        #render_time = 0
-        #parsing_time = 0
-
-        # ----------------------------------------------- 6. Doing inference -----------------------------------------------
-        #log.info("Starting inference...")
 
         objects = list()
         resized_image_shape =[416,416]
@@ -159,6 +150,8 @@ def decode_tiny_yolo(nnet_packet, **kwargs):
             coords = NN_metadata['NN_config']['NN_specific_metadata']['coordinates']
             classes = NN_metadata['NN_config']['NN_specific_metadata']['classes']
             anchors = NN_metadata['NN_config']['NN_specific_metadata']['anchors']
+            detection_threshold = NN_metadata['NN_config']['confidence_threshold']
+            
             l_params = YoloParams(side, mask, coords, classes, anchors)
             objects += parse_yolo_region(out_blob,  resized_image_shape,
                                                 original_image_shape, l_params,
@@ -173,7 +166,9 @@ def decode_tiny_yolo(nnet_packet, **kwargs):
             for j in range(i + 1, len(objects)):
                 if intersection_over_union(objects[i], objects[j]) > iou_threshold:
                         objects[j]['confidence'] = 0
-    
+        
+        objects = [obj for obj in objects if obj['confidence'] >= detection_threshold]
+
         return objects
 
 BOX_COLOR = (0,255,0)
@@ -186,27 +181,26 @@ def show_tiny_yolo(filtered_objects, frame, **kwargs):
     labels = NN_metadata['mappings']['labels']
     config = kwargs['config']
 
-    filtered_objects = [obj for obj in filtered_objects if obj['confidence'] >= detection_threshold]
-    for object_index in range(len(filtered_objects)):
+    for detection in filtered_objects:
         
         # get all values from the filtered object list
-        xmin = filtered_objects[object_index]['xmin']
-        ymin = filtered_objects[object_index]['ymin']
-        xmax = filtered_objects[object_index]['xmax']
-        ymax = filtered_objects[object_index]['ymax']
-        confidence = filtered_objects[object_index]['confidence']
-        class_id = filtered_objects[object_index]['class_id']
+        xmin = detection['xmin']
+        ymin = detection['ymin']
+        xmax = detection['xmax']
+        ymax = detection['ymax']
+        confidence = detection['confidence']
+        class_id = detection['class_id']
        
-            # Set up the text for display
+        # Set up the text for display
         cv2.rectangle(frame,(xmin, ymin), (xmax, ymin+20), LABEL_BG_COLOR, -1)
         cv2.putText(frame, labels[class_id] + ': %.2f' % confidence, (xmin+5, ymin+15), TEXT_FONT, 0.5, TEXT_COLOR, 1)
-            # Set up the bounding box
+        # Set up the bounding box
         cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), BOX_COLOR, 1)
         if config['ai']['calc_dist_to_bb']:
-            distance_x = filtered_objects[object_index]['depth_x']
-            distance_y = filtered_objects[object_index]['depth_y']
-            distance_z = filtered_objects[object_index]['depth_z']
-            cv2.putText(frame, 'x:' '{:7.3f}'.format(distance_x) + ' m', (xmin, ymin+60),  TEXT_FONT, 0.5, TEXT_COLOR)
-            cv2.putText(frame, 'y:' '{:7.3f}'.format(distance_y) + ' m', (xmin, ymin+80),  TEXT_FONT, 0.5, TEXT_COLOR)
-            cv2.putText(frame, 'z:' '{:7.3f}'.format(distance_z) + ' m', (xmin, ymin+100), TEXT_FONT, 0.5, TEXT_COLOR)
+            depth_x = detection['depth_x']
+            depth_y = detection['depth_y']
+            depth_z = detection['depth_z']
+            cv2.putText(frame, 'x:' '{:7.3f}'.format(depth_x) + ' m', (xmin, ymin+60),  TEXT_FONT, 0.5, TEXT_COLOR)
+            cv2.putText(frame, 'y:' '{:7.3f}'.format(depth_y) + ' m', (xmin, ymin+80),  TEXT_FONT, 0.5, TEXT_COLOR)
+            cv2.putText(frame, 'z:' '{:7.3f}'.format(depth_z) + ' m', (xmin, ymin+100), TEXT_FONT, 0.5, TEXT_COLOR)
     return frame
