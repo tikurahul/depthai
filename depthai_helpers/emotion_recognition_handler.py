@@ -1,10 +1,9 @@
 import cv2
 import numpy as np
-from depthai_helpers.tensor_utils import get_tensor_output, get_tensor_outputs_list, get_tensor_outputs_dict
 
 
 def decode_emotion_recognition(nnet_packet, **kwargs):
-    em_tensor = get_tensor_output(nnet_packet, 0)
+    em_tensor = nnet_packet.get_tensor(0)
     detections = []
     for i in em_tensor[0]:
         detections.append(i[0][0])

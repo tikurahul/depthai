@@ -2,7 +2,6 @@ from math import exp as exp
 import cv2
 import numpy as np
 from time import time
-from depthai_helpers.tensor_utils import get_tensor_output, get_tensor_outputs_list, get_tensor_outputs_dict
 
 # Adjust these thresholds
 detection_threshold = 0.60
@@ -122,23 +121,22 @@ def decode_tiny_yolo(nnet_packet, **kwargs):
         detection_nr = nnet_packet.getDetectionCount()
         for i in range(detection_nr):
             detection = nnet_packet.getDetectedObject(i)
-            score = detection.get_score()
-            detection = nnet_packet.getDetectedObject(i)
-            class_id = detection.get_label_id()
-            xmin = int(detection.get_xmin() * 416)
-            xmax = int(detection.get_xmax() * 416)
-            ymin = int(detection.get_ymin() * 416)
-            ymax = int(detection.get_ymax() * 416)
-            distance_x = detection.get_depth_x()
-            distance_y = detection.get_depth_y()
-            distance_z = detection.get_depth_z()
+            score = detection.score
+            class_id = detection.label
+            xmin = int(detection.x_min * 416)
+            xmax = int(detection.x_max * 416)
+            ymin = int(detection.y_min * 416)
+            ymax = int(detection.y_max * 416)
+            distance_x = detection.depth_x
+            distance_y = detection.depth_y
+            distance_z = detection.depth_z
             scaled_object = dict(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, class_id=class_id, confidence=score, depth_x=distance_x, depth_y=distance_y, depth_z=distance_z)
             objects.append(scaled_object)
 
         return objects
     else:
         
-        output_list = get_tensor_outputs_list(nnet_packet)
+        output_list = nnet_packet.getOutputsList()
 
         
         #render_time = 0

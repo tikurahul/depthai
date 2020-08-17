@@ -1,7 +1,5 @@
 import cv2
 import numpy as np
-from depthai_helpers.tensor_utils import get_tensor_output, get_tensor_outputs_list, get_tensor_outputs_dict
-
 
 def decode_age_gender_recognition(nnet_packet, **kwargs):
     return nnet_packet
@@ -12,7 +10,7 @@ def show_age_gender_recognition(entries_prev, frame, **kwargs):
 
     config = kwargs['config']
 
-    output_list = get_tensor_outputs_list(entries_prev)
+    output_list = entries_prev.getOutputsList()
 
     age_out = output_list[0]
     age = age_out[0,0,0,0]

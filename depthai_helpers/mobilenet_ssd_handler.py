@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from datetime import datetime
-from depthai_helpers.tensor_utils import get_tensor_output, get_tensor_outputs_list, get_tensor_outputs_dict
 
 def decode_mobilenet_ssd(nnet_packet, **kwargs):
     return nnet_packet
@@ -41,14 +40,14 @@ def show_mobilenet_ssd(nnet_packet, frame, **kwargs):
         detection_nr = nnet_packet.getDetectionCount()
         for i in range(detection_nr):
             detection = nnet_packet.getDetectedObject(i)
-            score = detection.get_score()
+            score = detection.score
             # Draw only objects when probability more than specified threshold
             if score > config['depth']['confidence_threshold']:
-                class_id = detection.get_label_id()
-                xmin = detection.get_xmin()
-                xmax = detection.get_xmax()
-                ymin = detection.get_ymin()
-                ymax = detection.get_ymax()
+                class_id = detection.label
+                xmin = detection.x_min
+                xmax = detection.x_max
+                ymin = detection.y_min
+                ymax = detection.y_max
                 if is_depth:
                     pt1 = nn_to_depth_coord(xmin,  ymin, nn2depth)
                     pt2 = nn_to_depth_coord(xmax, ymax, nn2depth)
@@ -75,9 +74,9 @@ def show_mobilenet_ssd(nnet_packet, frame, **kwargs):
                     pt_t2 = x1, y1 + 40
                     cv2.putText(frame, '{:.2f}'.format(100*score) + ' %', pt_t2, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color)
                     if config['ai']['calc_dist_to_bb']:
-                        distance_x = detection.get_depth_x()
-                        distance_y = detection.get_depth_y()
-                        distance_z = detection.get_depth_z()
+                        distance_x = detection.depth_x
+                        distance_y = detection.depth_y
+                        distance_z = detection.depth_z
                         pt_t3 = x1, y1 + 60
                         cv2.putText(frame, 'x:' '{:7.3f}'.format(distance_x) + ' m', pt_t3, cv2.FONT_HERSHEY_SIMPLEX, 0.5, color)
 
@@ -89,7 +88,7 @@ def show_mobilenet_ssd(nnet_packet, frame, **kwargs):
                     # Second-stage NN
                     if iteration == 0: # For now we run second-stage only on first detection
                         if 'landmarks-regression-retail-0009' in config['ai']['blob_file2']:
-                            landmark_tensor = get_tensor_output(nnet_packet, 1)
+                            landmark_tensor = nnet_packet.get_tensor(1)
                             # Decode
                             landmarks = []
                             for i in landmark_tensor[0]:
@@ -106,7 +105,7 @@ def show_mobilenet_ssd(nnet_packet, frame, **kwargs):
                                     continue
                                 cv2.circle(frame, (x,y), 4, (255, 0, 0))
                         if 'emotions-recognition-retail-0003' in config['ai']['blob_file2']:
-                            em_tensor = get_tensor_output(nnet_packet, 1)
+                            em_tensor = nnet_packet.get_tensor(1)
                             # Decode
                             emotion_data = []
                             for i in em_tensor[0]:
@@ -130,7 +129,7 @@ def show_mobilenet_ssd(nnet_packet, frame, **kwargs):
         return frame
     else:
 
-        res = get_tensor_output(nnet_packet, 0)
+        res = nnet_packet.get_tensor(0)
 
         last_detected = datetime.now()
         # iterate through pre-saved entries & draw rectangle & text on image:
