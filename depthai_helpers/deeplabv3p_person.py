@@ -6,11 +6,8 @@ class_colors = np.asarray(class_colors, dtype=np.uint8)
 output_colors = None
 
 def decode_deeplabv3p(nnet_packet, **kwargs):
-    raw = nnet_packet.get_tensor("out")        
-    raw.dtype = np.int32
-    outputs = nnet_packet.entries()[0]
-    output = raw[:len(outputs[0])]
-    output = np.reshape(output, (256,256)) 
+    output_tensor = nnet_packet.get_tensor(0)
+    output = output_tensor[0][0]
     output_colors = np.take(class_colors, output, axis=0)
     return output_colors
 
