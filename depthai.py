@@ -42,6 +42,10 @@ if args['dev_debug']:
     cmd_file = ''
     print('depthai will not load cmd file into device.')
 
+if args['boot_image'] is not None:
+    cmd_file = args['boot_image']
+    print('Booting up firmware image:', args['boot_image'])
+
 calc_dist_to_bb = True
 if args['disable_depth']:
     calc_dist_to_bb = False

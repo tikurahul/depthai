@@ -167,6 +167,9 @@ def parse_args():
     parser.add_argument("-debug", "--dev_debug", default=None, action="store_true",
                         help="Used by board developers for debugging.")
     
+    parser.add_argument("-boot", "--boot_image", default=None, type=str,
+                        help="USB-boot a specified firmware image file and exit.")
+
     parser.add_argument("-fusb2", "--force_usb2", default=None, action="store_true",
                         help="Force usb2 connection")
     
