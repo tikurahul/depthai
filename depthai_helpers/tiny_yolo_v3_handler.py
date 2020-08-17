@@ -150,7 +150,7 @@ def decode_tiny_yolo(nnet_packet, **kwargs):
             coords = NN_metadata['NN_config']['NN_specific_metadata']['coordinates']
             classes = NN_metadata['NN_config']['NN_specific_metadata']['classes']
             anchors = NN_metadata['NN_config']['NN_specific_metadata']['anchors']
-            detection_threshold = NN_metadata['NN_config']['confidence_threshold']
+            detection_threshold = NN_metadata['NN_config']['NN_specific_metadata']['confidence_threshold']
             
             l_params = YoloParams(side, mask, coords, classes, anchors)
             objects += parse_yolo_region(out_blob,  resized_image_shape,
