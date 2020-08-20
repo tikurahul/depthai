@@ -6,6 +6,8 @@ __pycache__/
 .vscode
 *.log
 # Distribution / packaging
+.idea
+*darwin.so
 .Python
 build/
 package/*.tar
