@@ -1,11 +1,10 @@
 import RPi.GPIO as GPIO
-import os
-import signal
+import threading
 import subprocess
+import os
 import time
-import itertools
+import signal
 import atexit
-import sys
 import argparse
 from argparse import ArgumentParser
 
@@ -22,24 +21,13 @@ GPIO.output(12,False)     # power off by default
 GPIO.output(26,True)      # not in reset state by default
 
 
-global all_processes
-all_processes=list()
-def cleanup():
-    global run
-    run=False
-    timeout_sec = 1
-    for p in all_processes: # list of your processes
-        print("cleaning")
-        p_sec = 0
-        for _ in range(timeout_sec):
-            if p.poll() == None:
-                time.sleep(1)
-                p_sec += 1
-        if p_sec >= timeout_sec:
-            p.killpg()
-            # os.killpg(os.getpgid(p.pid), signal.SIGTERM)  # Send the signal to all the process groups
-    print('cleaned up!')
+global p # To store child process info and id.
 
+def cleanup():
+    if(p is not None):
+        print('Stopping subprocess with pid: ', str(p.pid))
+        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+        print('Stopped!')
 
 def init():
     # Set up RPi GPIOs
@@ -60,7 +48,7 @@ def rst(sleeptime=0.1):
     GPIO.output(26,True)
     time.sleep(sleeptime)
     return
-    
+
 def pwron():
     #turns on power after checking module is present
     if moddetect()==True:
@@ -70,8 +58,9 @@ def pwron():
         return(True)
     else:
         return(False)
-    
+
 def forcepoweron():
+    print("Applying power to test board")
     #Turns power on without checking module is present
     GPIO.output(12,True)    # Turn power on to module
     time.sleep(1)    
@@ -85,38 +74,42 @@ def pwroff():
 
 def moddetect():
     if GPIO.input(13)==True: #Mounting module grounds GPIO, so logic is inverted. 
-        print("No module detected. Please mount BW1099 module and retry.")
         return(False)
     else:
-        print("Module detected!")
         return(True)
-        
-def rundepthai():
-    args=""
-    for arg in sys.argv[1:]:
-        args+="'"+arg+"' "
-    test_cmd = """python3 test.py -s left,10 right,10 previewout,10"""
 
-    atexit.register(cleanup)
-    p = subprocess.run(test_cmd, shell=True)
+def rundepthai():
+    global p
+    test_cmd = """python3 depthai.py -s left,10 right,10 previewout,10"""
+    p = subprocess.Popen(test_cmd, shell=True, preexec_fn=os.setsid)
     return_code = p.returncode
     print("Return code:"+str(return_code))
-    all_processes.clear()
     
 
+
 def main():
+    global p
+    isDetected = False
     while True:
-        pwrsuccess = pwron()
-        rst()
-        if pwrsuccess:
+        if moddetect() and not isDetected: # Starting child process if device detected and child process is not started.
+            isDetected = True
+            print("Module detected!")
+            forcepoweron()
+            rst()
+            print("Starting test run...")
             rundepthai()
+        elif not moddetect() and isDetected: # stoping child process if device is disconnected and child process is alive.
+            isDetected = False
+            print("Module unplugged!!!")
+            print("Killing test run...")
+            p.kill()
             pwroff()
-        
+            p = None
+
+
+atexit.register(cleanup)
 
 if __name__== "__main__":
   main()
 
-
-
-    
 
