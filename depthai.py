@@ -11,11 +11,22 @@ import cv2
 import numpy as np
 import depthai
 
+import matplotlib.pyplot as plt # TODO: Add matplotlib, pygame (1.9.6 I think,  to requirements.txt
+from mpl_toolkits.mplot3d import Axes3D
+
 import consts.resource_paths
 from depthai_helpers import utils
 from depthai_helpers.cli_utils import cli_print, parse_args, PrintColors
 
 from depthai_helpers.object_tracker_handler import show_tracklets
+
+# method 1 - triangulation
+#from visual_help.intersection import get_vector_direction, get_ray_intersection
+
+# method 2 - triangulation
+from visual_help.intersection import get_vector_intersection, get_vector_direction
+
+from visual_help.visualizer import start_OpenGL, initialize_OpenGL
 
 global args, cnn_model2
 try:
@@ -132,13 +143,6 @@ if platform.system() == 'Linux':
         "Disconnect/connect usb cable on host! \n", PrintColors.RED)
         os._exit(1)
 
-if args['cnn_camera'] == 'left_right':
-    if args['NN_engines'] is None:
-        args['NN_engines'] = 2
-        args['shaves'] = 6 if args['shaves'] is None else args['shaves'] - args['shaves'] % 2
-        args['cmx_slices'] = 6 if args['cmx_slices'] is None else args['cmx_slices'] - args['cmx_slices'] % 2
-        compile_model = True
-        cli_print('Running NN on both cams requires 2 NN engines!', PrintColors.RED)
 
 default_blob=True
 if compile_model:
@@ -198,10 +202,10 @@ if default_blob:
 # Do not modify the default values in the config Dict below directly. Instead, use the `-co` argument when running this script.
 config = {
     # Possible streams:
-    # ['left', 'right','previewout', 'metaout', 'depth_raw', 'disparity', 'disparity_color']
+    # ['left', 'right','previewout', 'metaout', 'depth_sipp', 'disparity', 'depth_color_h']
     # If "left" is used, it must be in the first position.
     # To test depth use:
-    # 'streams': [{'name': 'depth_raw', "max_fps": 12.0}, {'name': 'previewout', "max_fps": 12.0}, ],
+    # 'streams': [{'name': 'depth_sipp', "max_fps": 12.0}, {'name': 'previewout', "max_fps": 12.0}, ],
     'streams': stream_list,
     'depth':
     {
@@ -256,10 +260,6 @@ config = {
             'fps': args['mono_fps'],
         },
     },
-    'app':
-    {
-        'sync_video_meta_streams': args['sync_video_meta'],
-    },
     #'video_config':
     #{
     #    'rateCtrlMode': 'cbr',
@@ -286,9 +286,10 @@ if args['config_overwrite'] is not None:
     config = utils.merge(args['config_overwrite'],config)
     print("Merged Pipeline config with overwrite",config)
 
-if 'depth_raw' in config['streams'] and ('disparity_color' in config['streams'] or 'disparity' in config['streams']):
-    print('ERROR: depth_raw is mutually exclusive with disparity_color')
+if 'depth_sipp' in config['streams'] and ('depth_color_h' in config['streams'] or 'depth_mm_h' in config['streams']):
+    print('ERROR: depth_sipp is mutually exclusive with depth_color_h')
     exit(2)
+    # del config["streams"][config['streams'].index('depth_sipp')]
 
 # Append video stream if video recording was requested and stream is not already specified
 video_file = None
@@ -334,26 +335,20 @@ nnet_prev["entries_prev"] = {}
 nnet_prev["nnet_source"] = {}
 frame_count['nn'] = {}
 frame_count_prev['nn'] = {}
-
-NN_cams = {'rgb', 'left', 'right'}
-
-for cam in NN_cams:
-    nnet_prev["entries_prev"][cam] = []
-    nnet_prev["nnet_source"][cam] = []
-    frame_count['nn'][cam] = 0
-    frame_count_prev['nn'][cam] = 0
-
-stream_windows = []
 for s in stream_names:
+    stream_windows = []
     if s == 'previewout':
-        for cam in NN_cams:
+        for cam in {'rgb', 'left', 'right'}:
+            nnet_prev["entries_prev"][cam] = []
+            nnet_prev["nnet_source"][cam] = []
+            frame_count['nn'][cam] = 0
+            frame_count_prev['nn'][cam] = 0
             stream_windows.append(s + '-' + cam)
     else:
         stream_windows.append(s)
-
-for w in stream_windows:
-    frame_count[w] = 0
-    frame_count_prev[w] = 0
+    for w in stream_windows:
+        frame_count[w] = 0
+        frame_count_prev[w] = 0
 
 tracklets = None
 
@@ -371,13 +366,32 @@ def on_trackbar_change(value):
     return
 
 for stream in stream_names:
-    if stream in ["disparity", "disparity_color", "depth_raw"]:
+    if stream in ["disparity", "depth_color_h", "depth_sipp"]:
         cv2.namedWindow(stream)
         trackbar_name = 'Disparity confidence'
         conf_thr_slider_min = 0
         conf_thr_slider_max = 255
         cv2.createTrackbar(trackbar_name, stream, conf_thr_slider_min, conf_thr_slider_max, on_trackbar_change)
         cv2.setTrackbarPos(trackbar_name, stream, args['disparity_confidence_threshold'])
+
+left_frame_temp = None
+right_frame_temp = None
+left_ray = None
+right_ray = None
+flag = False
+left_camera_position = (0.107, -0.038 ,0.008)
+right_camera_position = (0.109, 0.039 , 0.008)
+cameras = ((0.107, -0.038 ,0.008),(0.109, 0.039 , 0.008))
+fig = plt.figure()
+ax = fig.gca(projection='3d')
+
+def demo(mid_intersects):
+    for a in mid_intersects:
+        ax.scatter(a[0],a[1],a[2], color='green')
+        ax.plot([left_camera_position[0],a[0]],[left_camera_position[1],a[1]], [left_camera_position[2], a[2]])
+        ax.plot([right_camera_position[0],a[0]],[right_camera_position[1],a[1]], [right_camera_position[2], a[2]])
+
+initialize_OpenGL()
 
 while True:
     # retreive data from the device
@@ -418,12 +432,74 @@ while True:
             data2 = packetData[2,:,:]
             frame = cv2.merge([data0, data1, data2])
 
-            nn_frame = show_nn(nnet_prev["entries_prev"][camera], frame, labels=labels, config=config)
+            nn_frame, blank_frame, landmarks_3D, landmark_coords = show_nn(nnet_prev["entries_prev"][camera], frame, labels=labels, config=config)
             if enable_object_tracker and tracklets is not None:
                 nn_frame = show_tracklets(tracklets, nn_frame, labels)
             cv2.putText(nn_frame, "fps: " + str(frame_count_prev[window_name]), (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0))
             cv2.putText(nn_frame, "NN fps: " + str(frame_count_prev['nn'][camera]), (2, frame.shape[0]-4), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0))
             cv2.imshow(window_name, nn_frame)
+
+            # 2D left landmarks
+            if window_name == 'previewout-left':
+                left_frame_temp = blank_frame
+                left_ray = np.array(landmarks_3D[:])
+                
+                    
+                for point in landmark_coords:
+                    cv2.circle(blank_frame, point, 3, (0,0,255))
+                cv2.imshow('left', left_frame_temp)
+                flag = False
+                
+            # 2D right landmarks
+            if window_name == 'previewout-right':
+                right_frame_temp = blank_frame
+                right_ray = np.array(landmarks_3D[:])
+                
+
+                for point in landmark_coords:
+                    cv2.circle(blank_frame, point, 3, (0,0,255))
+                cv2.imshow('right', right_frame_temp)
+                flag = True
+            
+            
+            if left_ray is not None and right_ray is not None and flag == True:
+                left_intersects = []
+                right_intersects = []
+                mid_intersects = []
+                
+                for i in range(len(left_ray)):
+                    left_vector = get_vector_direction(left_camera_position, left_ray[i])
+                    right_vector = get_vector_direction(right_camera_position, right_ray[i])
+                    # comment the code below if use method 2
+                    intersection_landmark = get_vector_intersection(left_vector, left_camera_position, right_vector, right_camera_position)
+                    # uncomment the code below if use method 1
+#                    left_intersect = get_ray_intersection(left_camera_position, left_vector, right_camera_position, right_vector)
+#                    right_intersect = get_ray_intersection(right_camera_position, right_vector, right_camera_position, left_vector)
+#                    intersection_landmark = (left_intersect + right_intersect) / 2
+##
+                    mid_intersects.append(intersection_landmark)
+                    
+#                    print(intersection_landmark)
+                    
+                # testing purpose with matplotlib (one frame)
+#                for a in left_ray:
+#                    ax.scatter(a[0],a[1],a[2], color='blue')
+#                    ax.plot([left_camera_position[0],a[0]],[left_camera_position[1],a[1]], [left_camera_position[2], a[2]], 'blue')
+#                for a in right_ray:
+#                    ax.scatter(a[0],a[1],a[2], color='red')
+#                    ax.plot([right_camera_position[0],a[0]],[right_camera_position[1],a[1]], [right_camera_position[2], a[2]], 'red')
+
+#                print(mid_intersects)
+#                demo(mid_intersects)
+#                plt.show()
+#
+                start_OpenGL(mid_intersects,cameras, left_ray, right_ray)
+#                start_OpenGL(left_ray,right_ray, cameras)
+                
+#                print('left:', left_ray)
+#                print('right:', right_ray)
+
+            
         elif packet.stream_name == 'left' or packet.stream_name == 'right' or packet.stream_name == 'disparity':
             frame_bgr = packetData
             cv2.putText(frame_bgr, packet.stream_name, (25, 25), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0))
@@ -437,7 +513,7 @@ while True:
                     camera = packet.getMetadata().getCameraName()
                 show_nn(nnet_prev["entries_prev"][camera], frame_bgr, labels=labels, config=config, nn2depth=nn2depth)
             cv2.imshow(window_name, frame_bgr)
-        elif packet.stream_name.startswith('depth') or packet.stream_name == 'disparity_color':
+        elif packet.stream_name.startswith('depth'):
             frame = packetData
 
             if len(frame.shape) == 2:
@@ -490,18 +566,18 @@ while True:
         t_start = t_curr
         # print("metaout fps: " + str(frame_count_prev["metaout"]))
 
-        stream_windows = []
         for s in stream_names:
+            stream_windows = []
             if s == 'previewout':
-                for cam in NN_cams:
+                for cam in {'rgb', 'left', 'right'}:
                     stream_windows.append(s + '-' + cam)
                     frame_count_prev['nn'][cam] = frame_count['nn'][cam]
                     frame_count['nn'][cam] = 0
             else:
                 stream_windows.append(s)
-        for w in stream_windows:
-            frame_count_prev[w] = frame_count[w]
-            frame_count[w] = 0
+            for w in stream_windows:
+                frame_count_prev[w] = frame_count[w]
+                frame_count[w] = 0
 
     key = cv2.waitKey(1)
     if key == ord('c'):

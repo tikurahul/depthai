@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from datetime import datetime
+import math
 
 def decode_mobilenet_ssd(nnet_packet, **kwargs):
     config = kwargs['config']
@@ -40,6 +41,10 @@ def show_mobilenet_ssd(entries_prev, frame, **kwargs):
     img_h = frame.shape[0]
     img_w = frame.shape[1]
 
+    landmarks_3D = []
+    landmark_coords = []
+    blank_frame = np.zeros((img_h, img_w, 3), np.uint8)
+
     last_detected = datetime.now()
     # iterate through pre-saved entries & draw rectangle & text on image:
     iteration = 0
@@ -60,6 +65,10 @@ def show_mobilenet_ssd(entries_prev, frame, **kwargs):
         x2, y2 = pt2
 
         cv2.rectangle(frame, pt1, pt2, color)
+        cv2.rectangle(blank_frame, pt1, pt2, color)
+        
+
+
         # Handles case where TensorEntry object label is out if range
         if e[0]['label'] > len(labels):
             print("Label index=",e[0]['label'], "is out of range. Not applying text to rectangle.")
@@ -89,13 +98,19 @@ def show_mobilenet_ssd(entries_prev, frame, **kwargs):
                     # Show
                     bb_w = x2 - x1
                     bb_h = y2 - y1
+                    
                     for i in landmarks:
                         try:
                             x = x1 + int(i[0]*bb_w)
                             y = y1 + int(i[1]*bb_h)
+
                         except:
                             continue
                         cv2.circle(frame, (x,y), 4, (255, 0, 0))
+#                        cv2.circle(blank_frame, (x,y), 3, (0,0,255))
+                        landmark_coords.append((x,y))
+                        landmarks_3D.append(get_landmark_3D(np.array([i[0],i[1]])))
+                        
                 if 'emotions-recognition-retail-0003' in config['ai']['blob_file2']:
                     # Decode
                     emotion_data = []
@@ -116,5 +131,23 @@ def show_mobilenet_ssd(entries_prev, frame, **kwargs):
                         if (datetime.now() - last_detected).total_seconds() < 100:
                             cv2.putText(frame, emotion, pt_t3, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255, 0), 2)
         iteration += 1
-    return frame
+    return frame, blank_frame, landmarks_3D, landmark_coords
 
+
+
+def get_landmark_3D(landmark):
+    focal_length = 842
+    landmark_norm = 0.5 - landmark
+    
+    # image size
+    landmark_image_coord = landmark_norm * 640
+
+    landmark_spherical_coord = [math.atan2(landmark_image_coord[0],focal_length), -math.atan2(landmark_image_coord[1],focal_length) + math.pi / 2]
+    
+    landmarks_3D = [
+        math.sin(landmark_spherical_coord[1]) * math.cos(landmark_spherical_coord[0]),
+        math.sin(landmark_spherical_coord[1]) * math.sin(landmark_spherical_coord[0]),
+        math.cos(landmark_spherical_coord[1])
+    ]
+
+    return landmarks_3D

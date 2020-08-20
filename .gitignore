@@ -2,6 +2,7 @@
 __pycache__/
 
 # General
+.idea
 .DS_Store
 .vscode
 *.log
@@ -31,6 +32,9 @@ MANIFEST
 # DepthAI-Specific
 dataset/
 depthai.calib
+
+# mac local lib
+*darwin.so
 
 *.h264
 *.h265
