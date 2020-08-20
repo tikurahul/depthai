@@ -21,11 +21,9 @@ GPIO.output(12,False)     # power off by default
 GPIO.output(26,True)      # not in reset state by default
 
 
-global p
-# global depthaiThread
+global p # To store child process info and id.
 
 def cleanup():
-    # global depthaiThread
     if(p is not None):
         print('Stopping subprocess with pid: ', str(p.pid))
         os.killpg(os.getpgid(p.pid), signal.SIGTERM)
@@ -81,57 +79,13 @@ def moddetect():
         return(True)
 
 def rundepthai():
-    # args=""
-    # for arg in sys.argv[1:]:
-    #     args+="'"+arg+"' "
     global p
-    # test_cmd = """python3 test.py -s left,10 right,10 previewout,10"""
     test_cmd = """python3 depthai.py -s left,10 right,10 previewout,10"""
     p = subprocess.Popen(test_cmd, shell=True, preexec_fn=os.setsid)
     return_code = p.returncode
     print("Return code:"+str(return_code))
     
 
-# def main():
-#     global p
-#     global depthaiThread
-#     depthaiThread = threading.Thread(target=rundepthai) # setting rundepthai to run on therad
-#     # isDetected = False
-#     while True:
-#         if moddetect() and not depthaiThread.is_alive(): # Starting child process in a thread if device detected and thread is not alive
-#             isDetected = True
-#             print("Module detected!")
-#             forcepoweron()
-#             rst()
-#             print("Starting test run...")
-#             depthaiThread.start()
-#         elif not moddetect() and depthaiThread.is_alive(): # stoping child process if device is disconnected and thread is alive
-#             isDetected = False
-#             print("Module unplugged!!!")
-#             print("Killing test run...")
-#             p.kill()
-#             # if depthaiThread.is_alive()
-#             depthaiThread.join()
-#         elif not moddetect() and not depthaiThread.is_alive():
-#             isDetected = False
-#             print("No module detected. Please mount BW1099 module and retry.")
-        
-# def main():
-#     global p
-#     isDetected = False
-#     i = 0;
-#     rundepthai()
-#     time.sleep(10)
-#     while True:
-#         if isDetected: # stoping child process if device is disconnected and thread is alive
-#             isDetected = False
-#             print("Module unplugged!!!")
-#             print("Killing test run...")
-#             p.kill()
-
-#         if(i == 10000):
-#             isDetected = True
-#         i += 1
 
 def main():
     global p
@@ -149,10 +103,10 @@ def main():
             print("Module unplugged!!!")
             print("Killing test run...")
             p.kill()
+            pwroff()
+
             p = None
 
-        elif not moddetect() and not isDetected:
-            print("No module detected. Please mount BW1099 module and retry.")
 
 atexit.register(cleanup)
 
