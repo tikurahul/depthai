@@ -85,11 +85,17 @@ def rundepthai():
     return_code = p.returncode
     print("Return code:"+str(return_code))
     
-
+def printwaiting():
+    print()
+    print("---------------------")
+    print("Waiting for module...")
+    print("---------------------")
+    print()
 
 def main():
     global p
     isDetected = False
+    printwaiting()
     while True:
         if moddetect() and not isDetected: # Starting child process if device detected and child process is not started.
             isDetected = True
@@ -104,6 +110,8 @@ def main():
             print("Killing test run...")
             p.kill()
             pwroff()
+            
+            printwaiting()
 
             p = None
 
