@@ -80,8 +80,19 @@ class DepthAI:
         else:
             self.device = depthai.Device(args['device_id'], usb2_mode)
 
-        print(stream_names)
+        device_model = self.device.get_device_model()
+        print(device_model)
+
+        # if device model is NA we're going to assume that it is a 1093, which has no EEPROM for storing device_model or LR cameras. Prevent the script from trying to start any streams that rely on LR cameras.
+        streams1093 = ["metaout", "previewout", "jpegout", "meta_d2h", "object_tracker"]
+        
+        print("Requested Streams: " + str(stream_names))
         print('Available streams: ' + str(self.device.get_available_streams()))
+
+        for stream_name in stream_names:
+            if not stream_name in self.device.get_available_streams():
+                print("The stream '" + stream_name + "' is not supported by your device. Please verify the requested streams.")
+                exit(3)
 
         # create the pipeline, here is the first connection with the device
         p = self.device.create_pipeline(config=config)
