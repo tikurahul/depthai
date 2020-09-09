@@ -21,6 +21,8 @@ right_mesh_fpath        = relative_to_abs_path('../resources/mesh_right.calib')
 nn_resource_path      = relative_to_abs_path('../resources/nn')+"/"
 blob_fpath            = relative_to_abs_path('../resources/nn/mobilenet-ssd/mobilenet-ssd.blob')
 blob_config_fpath     = relative_to_abs_path('../resources/nn/mobilenet-ssd/mobilenet-ssd.json')
+fail_path             = relative_to_abs_path('../resources/images/fail.PNG')
+pass_path             = relative_to_abs_path('../resources/images/pass.PNG')
 
 if custom_calib_fpath is not None and Path(custom_calib_fpath).exists():
     calib_fpath = custom_calib_fpath

@@ -672,7 +672,15 @@ class StereoCalibration(object):
         for l_pt, r_pt in zip(imgpoints_l, imgpoints_r):
             epi_error_sum += abs(l_pt[0][1] - r_pt[0][1])
 
-        print("Average Epipolar Error: " + str(epi_error_sum / len(imgpoints_r)))
+        avg_epipolar = epi_error_sum / len(imgpoints_r)
+        print("Average Epipolar Error: " + str(avg_epipolar))
+
+        if avg_epipolar > 1.5:
+            fail_img = cv2.imread(consts.resource_paths.fail_path, cv2.IMREAD_COLOR)
+            cv2.imshow('Calibration test Failed', fail_img)
+        else:
+            pass_img = cv2.imread(consts.resource_paths.pass_path, cv2.IMREAD_COLOR)
+            cv2.imshow('Calibration test Passed', pass_img)
 
         for image_data_pair in image_data_pairs:
             img_concat = cv2.hconcat([image_data_pair[0], image_data_pair[1]])
