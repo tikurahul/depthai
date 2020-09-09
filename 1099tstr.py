@@ -80,7 +80,7 @@ def moddetect():
 
 def rundepthai():
     global p
-    test_cmd = """python3 depthai.py -s left,10 right,10 previewout,10 metaout jpegout depth_raw,10 -v /dev/null"""
+    test_cmd = """python3 depthai.py -s left,10 right,10 previewout,10 metaout jpegout depth_raw,10"""
     p = subprocess.Popen(test_cmd, shell=True, preexec_fn=os.setsid)
     return_code = p.returncode
     print("Return code:"+str(return_code))
