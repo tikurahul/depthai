@@ -102,25 +102,25 @@ class StereoCalibration(object):
         self.create_save_mesh()
         
         # storing right camera intrinsics locally. Temporary update
-        intrinsi_right = {
-            'width' : 1280,
-            'height' : 720,
-            'intrinsic_matrix' :
-            [
-                self.M2[0,0],
-                self.M2[1,0],
-                self.M2[2,0],
-                self.M2[0,1],
-                self.M2[1,1],
-                self.M2[2,1],
-                self.M2[0,2],
-                self.M2[1,2],
-                self.M2[2,2],
-            ]
-        }
+        # intrinsi_right = {
+        #     'width' : 1280,
+        #     'height' : 720,
+        #     'intrinsic_matrix' :
+        #     [
+        #         self.M2[0,0],
+        #         self.M2[1,0],
+        #         self.M2[2,0],
+        #         self.M2[0,1],
+        #         self.M2[1,1],
+        #         self.M2[2,1],
+        #         self.M2[0,2],
+        #         self.M2[1,2],
+        #         self.M2[2,2],
+        #     ]
+        # }
 
-        with open('resources/intrinisc_right.json', 'w') as fp:
-            json.dump(intrinsi_right, fp,indent=4)
+        # with open('resources/intrinisc_right.json', 'w') as fp:
+        #     json.dump(intrinsi_right, fp,indent=4)
 
         # append specific flags to file
         with open(out_filepath, "ab") as fp:
@@ -431,13 +431,23 @@ class StereoCalibration(object):
         for l_pt, r_pt in zip(imgpoints_l, imgpoints_r):
             epi_error_sum += abs(l_pt[0][1] - r_pt[0][1])
 
-        print("Average Epipolar Error: " + str(epi_error_sum / len(imgpoints_r)))
+        avg_epipolar = epi_error_sum / len(imgpoints_r)
+        print("Average Epipolar Error: " + str(avg_epipolar))
+
+        if avg_epipolar > 0.5:
+            fail_img = cv2.imread(consts.resource_paths.fail_path, cv2.IMREAD_COLOR)
+            cv2.imshow('Calibration test Failed', fail_img)
+        else:
+            pass_img = cv2.imread(consts.resource_paths.pass_path, cv2.IMREAD_COLOR)
+            cv2.imshow('Calibration test Passed', pass_img)
+
+        print("Average Epipolar Error: " + str(avg_epipolar))
 
         for image_data_pair in image_data_pairs:
             img_concat = cv2.hconcat([image_data_pair[0], image_data_pair[1]])
             img_concat = cv2.cvtColor(img_concat, cv2.COLOR_GRAY2RGB)
 
-            # draw epipolar lines for debug purposes
+            # draw epipolar lines for debug purposes 
             line_row = 0
             while line_row < img_concat.shape[0]:
                 cv2.line(img_concat,
