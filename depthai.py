@@ -327,7 +327,8 @@ if not depthai.init_device(cmd_file, args['device_id']):
     exit(1)
 
 print('Available streams: ' + str(depthai.get_available_steams()))
-
+print("Creating pipeline--------------------->")
+print(depthai.get_left_intrinsic())
 # create the pipeline, here is the first connection with the device
 p = depthai.create_pipeline(config=config)
 

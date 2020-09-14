@@ -6,7 +6,8 @@ import numpy as np
 import re
 import time
 import consts.resource_paths
-import json
+import subprocess
+import depthai
 
 # Creates a set of 13 polygon coordinates
 def setPolygonCoordinates(height, width):
@@ -101,38 +102,21 @@ class StereoCalibration(object):
 
         self.create_save_mesh()
         
-        # storing right camera intrinsics locally. Temporary update
-        # intrinsi_right = {
-        #     'width' : 1280,
-        #     'height' : 720,
-        #     'intrinsic_matrix' :
-        #     [
-        #         self.M2[0,0],
-        #         self.M2[1,0],
-        #         self.M2[2,0],
-        #         self.M2[0,1],
-        #         self.M2[1,1],
-        #         self.M2[2,1],
-        #         self.M2[0,2],
-        #         self.M2[1,2],
-        #         self.M2[2,2],
-        #     ]
-        # }
-
-        # with open('resources/intrinisc_right.json', 'w') as fp:
-        #     json.dump(intrinsi_right, fp,indent=4)
-
         # append specific flags to file
         with open(out_filepath, "ab") as fp:
             fp.write(bytearray(flags))
 
+
         print("Calibration file written to %s." % (out_filepath))
         print("\tTook %i seconds to run image processing." % (round(time.time() - start_time, 2)))
+
+
+        self.test_epipolar(filepath)
         # show debug output for visual inspection
-        print("\nRectifying dataset for visual inspection using Mesh")
-        self.show_rectified_images_two_calib(filepath, False)
-        print("\nRectifying dataset for visual inspection using Two Homography")
-        self.show_rectified_images_two_calib(filepath, True)
+        # print("\nRectifying dataset for visual inspection using Mesh")
+        # self.show_rectified_images_two_calib(filepath, False)
+        # print("\nRectifying dataset for visual inspection using Two Homography")
+        # self.show_rectified_images_two_calib(filepath, True)
 
     def process_images(self, filepath):
         """Read images, detect corners, refine corners, and save data."""
@@ -355,6 +339,120 @@ class StereoCalibration(object):
         mesh_right = np.array(mesh_right)
         mesh_left.tofile(consts.resource_paths.left_mesh_fpath)
         mesh_right.tofile(consts.resource_paths.right_mesh_fpath)
+
+    def test_epipolar(self, dataset_dir):
+        images_left = glob.glob(dataset_dir + '/left/*.png')
+        images_right = glob.glob(dataset_dir + '/right/*.png')
+        images_left.sort()
+        images_right.sort()
+        print("HU IHER")
+        assert len(images_left) != 0, "ERROR: Images not read correctly"
+        assert len(images_right) != 0, "ERROR: Images not read correctly"
+
+        image_data_pairs = []
+        for image_left, image_right in zip(images_left, images_right):
+            # read images
+            img_l = cv2.imread(image_left, 0)
+            img_r = cv2.imread(image_right, 0)
+            # warp right image
+            img_l = cv2.warpPerspective(img_l, self.H1, img_l.shape[::-1],
+                                        cv2.INTER_CUBIC +
+                                        cv2.WARP_FILL_OUTLIERS +
+                                        cv2.WARP_INVERSE_MAP)
+            
+            img_r = cv2.warpPerspective(img_r, self.H2, img_r.shape[::-1],
+                                        cv2.INTER_CUBIC +
+                                        cv2.WARP_FILL_OUTLIERS +
+                                        cv2.WARP_INVERSE_MAP)
+
+
+            image_data_pairs.append((img_l, img_r))
+
+
+        # compute metrics
+        imgpoints_r = []
+        imgpoints_l = []
+        for image_data_pair in image_data_pairs:
+            flags = 0
+            flags |= cv2.CALIB_CB_ADAPTIVE_THRESH
+            flags |= cv2.CALIB_CB_NORMALIZE_IMAGE
+            flags |= cv2.CALIB_CB_FAST_CHECK
+            ret_l, corners_l = cv2.findChessboardCorners(image_data_pair[0],
+                                                         (9, 6), flags)
+            ret_r, corners_r = cv2.findChessboardCorners(image_data_pair[1],
+                                                         (9, 6), flags)
+
+            # termination criteria
+            self.criteria = (cv2.TERM_CRITERIA_MAX_ITER +
+                             cv2.TERM_CRITERIA_EPS, 10, 0.05)
+
+            # if corners are found in both images, refine and add data
+            if ret_l and ret_r:
+                rt = cv2.cornerSubPix(image_data_pair[0], corners_l, (5, 5),
+                                      (-1, -1), self.criteria)
+                rt = cv2.cornerSubPix(image_data_pair[1], corners_r, (5, 5),
+                                      (-1, -1), self.criteria)
+                imgpoints_l.extend(corners_l)
+                imgpoints_r.extend(corners_r)
+                epi_error_sum = 0
+                for l_pt, r_pt in zip(corners_l, corners_r):
+                    epi_error_sum += abs(l_pt[0][1] - r_pt[0][1])
+                
+                print("Average Epipolar Error per image on host: " + str(epi_error_sum / len(corners_l)))
+
+        epi_error_sum = 0
+        for l_pt, r_pt in zip(imgpoints_l, imgpoints_r):
+            epi_error_sum += abs(l_pt[0][1] - r_pt[0][1])
+
+        avg_epipolar = epi_error_sum / len(imgpoints_r)
+        print("Average Epipolar Error: " + str(avg_epipolar))
+
+        if avg_epipolar > 0.5:
+            fail_img = cv2.imread(consts.resource_paths.fail_path, cv2.IMREAD_COLOR)
+            cv2.imshow('Calibration test Failed', fail_img)
+        else:            
+            self.rundepthai()
+            if not depthai.init_device(consts.resource_paths.device_cmd_fpath, ''):
+                print("Error initializing device. Try to reset it.")
+                exit(1)
+            
+            if depthai.is_eeprom_loaded():
+                pass_img = cv2.imread(consts.resource_paths.pass_path, cv2.IMREAD_COLOR)
+                while (1):
+                    cv2.imshow('Calibration test Passed and wrote to EEPROM', pass_img)
+                    k = cv2.waitKey(33)
+                    if k == 32 or k == 27:  # Esc key to stop
+                        break
+                    elif k == -1:  # normally -1 returned,so don't print it
+                        continue
+            else:
+                fail_img = cv2.imread(consts.resource_paths.fail_path, cv2.IMREAD_COLOR)
+                while (1):
+                    cv2.imshow('EEPROM write failed', fail_img)
+                    k = cv2.waitKey(33)
+                    if k == 32 or k == 27:  # Esc key to stop
+                        break
+                    elif k == -1:  # normally -1 returned,so don't print it
+                        continue
+            depthai.deinit_device()
+
+    def rundepthai(self):
+        test_cmd = """python3 depthai.py -brd bw1098obc -e"""
+        self.p = subprocess.Popen(test_cmd, shell=True, preexec_fn=os.setsid)
+        # return_code = self.p.returncode
+        # print("Return code:"+str(return_code))
+        while (1):
+            # k = cv2.waitKey(33)
+            char = input()
+            if char == 'k':  # Esc key to stop
+                self.p.kill()
+                break
+            else:
+                print("Please press k to continue")
+
+        time.sleep(3)
+
+
 
     def show_rectified_images_two_calib(self, dataset_dir, use_homo):
         images_left = glob.glob(dataset_dir + '/left/*.png')
