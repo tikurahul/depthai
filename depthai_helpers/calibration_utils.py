@@ -8,6 +8,7 @@ import time
 import consts.resource_paths
 import subprocess
 import depthai
+import signal
 
 # Creates a set of 13 polygon coordinates
 def setPolygonCoordinates(height, width):
