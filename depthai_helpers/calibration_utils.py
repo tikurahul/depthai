@@ -445,7 +445,8 @@ class StereoCalibration(object):
             # k = cv2.waitKey(33)
             char = input()
             if char == 'k':  # Esc key to stop
-                self.p.kill()
+                # self.p.kill()
+                os.killpg(os.getpgid(self.p.pid), signal.SIGTERM)
                 break
             else:
                 print("Please press k to continue")
