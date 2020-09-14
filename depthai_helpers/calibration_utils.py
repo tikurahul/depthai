@@ -442,15 +442,16 @@ class StereoCalibration(object):
         self.p = subprocess.Popen(test_cmd, shell=True, preexec_fn=os.setsid)
         # return_code = self.p.returncode
         # print("Return code:"+str(return_code))
-        while (1):
+        #while (1):
             # k = cv2.waitKey(33)
-            char = input()
-            if char == 'k':  # Esc key to stop
+            #char = input()
+            #if char == 'k':  # Esc key to stop
                 # self.p.kill()
-                os.killpg(os.getpgid(self.p.pid), signal.SIGTERM)
-                break
-            else:
-                print("Please press k to continue")
+        time.sleep(10)
+        os.killpg(os.getpgid(self.p.pid), signal.SIGTERM)
+            #    break
+            #else:
+            #    print("Please press k to continue")
 
         time.sleep(3)
 
