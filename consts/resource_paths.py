@@ -15,13 +15,14 @@ device_cmd_fpath      = relative_to_abs_path('../depthai.cmd')
 device_usb2_cmd_fpath = relative_to_abs_path('../depthai_usb2.cmd')
 boards_dir_path       = relative_to_abs_path('../resources/boards') + "/"
 custom_calib_fpath    = relative_to_abs_path('../resources/depthai.calib')
-left_mesh_fpath        = relative_to_abs_path('../resources/mesh_left.calib')
-right_mesh_fpath        = relative_to_abs_path('../resources/mesh_right.calib')
+left_mesh_fpath       = relative_to_abs_path('../resources/mesh_left.calib')
+right_mesh_fpath      = relative_to_abs_path('../resources/mesh_right.calib')
 
 nn_resource_path      = relative_to_abs_path('../resources/nn')+"/"
 blob_fpath            = relative_to_abs_path('../resources/nn/mobilenet-ssd/mobilenet-ssd.blob')
 blob_config_fpath     = relative_to_abs_path('../resources/nn/mobilenet-ssd/mobilenet-ssd.json')
-fail_path             = relative_to_abs_path('../resources/images/fail.PNG')
+eeprom_fail_path      = relative_to_abs_path('../resources/images/eeprom_fail.PNG')
+calib_fail_path       = relative_to_abs_path('../resources/images/calib_fail.PNG')
 pass_path             = relative_to_abs_path('../resources/images/pass.PNG')
 
 if custom_calib_fpath is not None and Path(custom_calib_fpath).exists():

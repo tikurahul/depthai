@@ -409,7 +409,7 @@ class StereoCalibration(object):
         print("Average Epipolar Error: " + str(avg_epipolar))
 
         if avg_epipolar > 0.5:
-            fail_img = cv2.imread(consts.resource_paths.fail_path, cv2.IMREAD_COLOR)
+            fail_img = cv2.imread(consts.resource_paths.calib_fail_path, cv2.IMREAD_COLOR)
             cv2.imshow('Calibration test Failed', fail_img)
         else:            
             self.rundepthai()
@@ -427,7 +427,7 @@ class StereoCalibration(object):
                     elif k == -1:  # normally -1 returned,so don't print it
                         continue
             else:
-                fail_img = cv2.imread(consts.resource_paths.fail_path, cv2.IMREAD_COLOR)
+                fail_img = cv2.imread(consts.resource_paths.eeprom_fail_path, cv2.IMREAD_COLOR)
                 while (1):
                     cv2.imshow('EEPROM write failed', fail_img)
                     k = cv2.waitKey(33)
