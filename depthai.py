@@ -199,6 +199,10 @@ if default_blob:
     cmx_slices = 7
     NCE_nr = 1
 
+device_id = args['device_id']
+if args['build_flash_package']:
+    device_id = 'no_device'
+
 # Do not modify the default values in the config Dict below directly. Instead, use the `-co` argument when running this script.
 config = {
     # Possible streams:
@@ -313,8 +317,7 @@ stream_names = [stream if isinstance(stream, str) else stream['name'] for stream
 
 enable_object_tracker = 'object_tracker' in stream_names
 
-
-if not depthai.init_device(cmd_file, args['device_id']):
+if not depthai.init_device(cmd_file, device_id):
     print("Error initializing device. Try to reset it.")
     exit(1)
 

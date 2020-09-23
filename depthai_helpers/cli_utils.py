@@ -170,6 +170,9 @@ def parse_args():
     parser.add_argument("-boot", "--boot_image", default=None, type=str,
                         help="USB-boot a specified firmware image file. Empty '' to skip boot.")
 
+    parser.add_argument("-build", "--build_flash_package", default=None, action="store_true",
+                        help="Build a package (FW, config, NN blob) that can be flashed via DFU.")
+
     parser.add_argument("-fusb2", "--force_usb2", default=None, action="store_true",
                         help="Force usb2 connection")
     
