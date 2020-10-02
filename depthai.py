@@ -14,9 +14,13 @@ import depthai
 import consts.resource_paths
 from depthai_helpers import utils
 from depthai_helpers.cli_utils import cli_print, parse_args, PrintColors
-from depthai_helpers.projector_3d import depthmap_to_projection, visualize, PointCloudVisualizer
 
 from depthai_helpers.object_tracker_handler import show_tracklets
+
+is_rpi = platform.machine().startswith('arm') or platform.machine().startswith('aarch64')
+if not is_rpi:
+    # warnings.warn("Open3D is not available on raspberry pi so point cloud is disabled", ImportWarning)
+    from depthai_helpers.projector_3d import PointCloudVisualizer
 
 
 global args, cnn_model2
@@ -370,7 +374,7 @@ for w in stream_windows:
 
 tracklets = None
 
-process_watchdog_timeout=1 #seconds
+process_watchdog_timeout=10 #seconds
 def reset_process_wd():
     global wd_cutoff
     wd_cutoff=monotonic()+process_watchdog_timeout
@@ -410,7 +414,14 @@ for stream in stream_names:
 
 right_rectified = None
 pcl_not_set = True
+i = 0
+
+if is_rpi and args['pointcloud']:
+    raise NotImplementedError("Point cloud visualization is currently not supported on RPI")
+
 while True:
+    
+    # print(i)
     # retreive data from the device
     # data is stored in packets, there are nnet (Neural NETwork) packets which have additional functions for NNet result interpretation
     nnet_packets, data_packets = p.get_available_nnet_and_data_packets()
@@ -462,6 +473,13 @@ while True:
             cv2.imshow(window_name, nn_frame)
         elif packet.stream_name in ['left', 'right', 'disparity', 'rectified_left', 'rectified_right']:
             frame_bgr = packetData
+            i+=1
+            if packet.stream_name == 'left':
+                cv2.imwrite('dataset/left/left_disp_'+ str(i) +'.png', frame_bgr)
+            if packet.stream_name == 'right':
+                cv2.imwrite('dataset/right/right_disp_'+ str(i) +'.png', frame_bgr)
+
+
             if args['pointcloud'] and packet.stream_name == 'rectified_right':
                 right_rectified = packetData
             cv2.putText(frame_bgr, packet.stream_name, (25, 25), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0))

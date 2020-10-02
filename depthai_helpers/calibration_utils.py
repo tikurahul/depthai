@@ -287,7 +287,9 @@ class StereoCalibration(object):
         # TODO: Try Building mesh from homography later.
         self.H1 = np.matmul(np.matmul(self.M1, self.R1), np.linalg.inv(self.M1))
         self.H2 = np.matmul(np.matmul(self.M1, self.R2), np.linalg.inv(self.M2))                                                                                        
-
+        print("H1----------")
+        print(self.H1)
+        print(self.H2)
 
     def create_save_mesh(self): #, output_path):
         
