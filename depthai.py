@@ -66,10 +66,23 @@ if args['cnn_model'] == 'emotions-recognition-retail-0003':
     show_nn=show_emotion_recognition
     calc_dist_to_bb=False
 
-if args['cnn_model'] == 'tiny-yolo':
+if args['cnn_model'] in ['tiny-yolo-v3', 'yolo-v3']:
     from depthai_helpers.tiny_yolo_v3_handler import decode_tiny_yolo, show_tiny_yolo
     decode_nn=decode_tiny_yolo
     show_nn=show_tiny_yolo
+    compile_model=False
+    
+if args['cnn_model'] == 'openpose':
+    from depthai_helpers.openpose_handler import decode_openpose, show_openpose
+    decode_nn=decode_openpose
+    show_nn=show_openpose
+    calc_dist_to_bb=False
+    compile_model=False
+    
+if args['cnn_model'] == 'openpose2':
+    from depthai_helpers.openpose2_handler import decode_openpose, show_openpose
+    decode_nn=decode_openpose
+    show_nn=show_openpose
     calc_dist_to_bb=False
     compile_model=False
 
@@ -78,14 +91,17 @@ if args['cnn_model'] in ['facial-landmarks-35-adas-0002', 'landmarks-regression-
     decode_nn=decode_landmarks_recognition
     show_nn=show_landmarks_recognition
     calc_dist_to_bb=False
+    
+if args['cnn_model'] == 'deeplabv3p_person':
+    from depthai_helpers.deeplabv3p_person import decode_deeplabv3p, show_deeplabv3p
+    decode_nn=decode_deeplabv3p
+    show_nn=show_deeplabv3p
+    calc_dist_to_bb=False
 
 if args['cnn_model']:
     cnn_model_path = consts.resource_paths.nn_resource_path + args['cnn_model']+ "/" + args['cnn_model']
     blob_file = cnn_model_path + ".blob"
-    suffix=""
-    if calc_dist_to_bb:
-        suffix="_depth"
-    blob_file_config = cnn_model_path + suffix + ".json"
+    blob_file_config = cnn_model_path + ".json"
 
 blob_file2 = ""
 blob_file_config2 = ""
@@ -114,10 +130,21 @@ if not blob_file_config_path.exists():
     os._exit(1)
 
 with open(blob_file_config) as f:
-    data = json.load(f)
+    if f is not None:
+        NN_json = json.load(f)
+        f.close()
 
 try:
-    labels = data['mappings']['labels']
+    output_format = NN_json['NN_config']['output_format']
+except:
+    print("s")
+    output_format = "raw"
+
+if output_format == "raw" and calc_dist_to_bb == True:
+    cli_print("WARNING: Depth calculation with raw output format is not supported! It's only supported for YOLO/mobilenet based NNs, disabling calc_dist_to_bb", PrintColors.WARNING)
+    calc_dist_to_bb = False
+try:
+    labels = NN_json['mappings']['labels']
 except:
     labels = None
     print("Labels not found in json!")
@@ -345,8 +372,8 @@ frame_count_prev['nn'] = {}
 NN_cams = {'rgb', 'left', 'right'}
 
 for cam in NN_cams:
-    nnet_prev["entries_prev"][cam] = []
-    nnet_prev["nnet_source"][cam] = []
+    nnet_prev["entries_prev"][cam] = None
+    nnet_prev["nnet_source"][cam] = None
     frame_count['nn'][cam] = 0
     frame_count_prev['nn'][cam] = 0
 
@@ -403,7 +430,7 @@ while True:
     for _, nnet_packet in enumerate(nnet_packets):
         camera = nnet_packet.getMetadata().getCameraName()
         nnet_prev["nnet_source"][camera] = nnet_packet
-        nnet_prev["entries_prev"][camera] = decode_nn(nnet_packet, config=config)
+        nnet_prev["entries_prev"][camera] = decode_nn(nnet_packet, config=config, NN_json=NN_json)
         frame_count['metaout'] += 1
         frame_count['nn'][camera] += 1
 
@@ -424,13 +451,13 @@ while True:
             data1 = packetData[1,:,:]
             data2 = packetData[2,:,:]
             frame = cv2.merge([data0, data1, data2])
-
-            nn_frame = show_nn(nnet_prev["entries_prev"][camera], frame, labels=labels, config=config)
-            if enable_object_tracker and tracklets is not None:
-                nn_frame = show_tracklets(tracklets, nn_frame, labels)
-            cv2.putText(nn_frame, "fps: " + str(frame_count_prev[window_name]), (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0))
-            cv2.putText(nn_frame, "NN fps: " + str(frame_count_prev['nn'][camera]), (2, frame.shape[0]-4), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0))
-            cv2.imshow(window_name, nn_frame)
+            if nnet_prev["entries_prev"][camera] is not None:
+                frame = show_nn(nnet_prev["entries_prev"][camera], frame, NN_json=NN_json, config=config)
+                if enable_object_tracker and tracklets is not None:
+                    frame = show_tracklets(tracklets, frame, labels)
+            cv2.putText(frame, "fps: " + str(frame_count_prev[window_name]), (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0))
+            cv2.putText(frame, "NN fps: " + str(frame_count_prev['nn'][camera]), (2, frame.shape[0]-4), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0))
+            cv2.imshow(window_name, frame)
         elif packet.stream_name == 'left' or packet.stream_name == 'right' or packet.stream_name == 'disparity':
             frame_bgr = packetData
             cv2.putText(frame_bgr, packet.stream_name, (25, 25), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0))
@@ -442,7 +469,8 @@ while True:
                         camera = 'right'
                 elif camera != 'rgb':
                     camera = packet.getMetadata().getCameraName()
-                show_nn(nnet_prev["entries_prev"][camera], frame_bgr, labels=labels, config=config, nn2depth=nn2depth)
+                if nnet_prev["entries_prev"][camera] is not None:
+                    frame_bgr = show_nn(nnet_prev["entries_prev"][camera], frame_bgr, NN_json=NN_json, config=config, nn2depth=nn2depth)
             cv2.imshow(window_name, frame_bgr)
         elif packet.stream_name.startswith('depth') or packet.stream_name == 'disparity_color':
             frame = packetData
@@ -466,7 +494,8 @@ while True:
                 camera = args['cnn_camera']
                 if camera == 'left_right':
                     camera = 'right'
-                show_nn(nnet_prev["entries_prev"][camera], frame, labels=labels, config=config, nn2depth=nn2depth)
+                if nnet_prev["entries_prev"][camera] is not None:
+                    frame = show_nn(nnet_prev["entries_prev"][camera], frame, NN_json=NN_json, config=config, nn2depth=nn2depth)
             cv2.imshow(window_name, frame)
 
         elif packet.stream_name == 'jpegout':
