@@ -39,6 +39,7 @@ class DepthAI:
     nnet_packets = None
     data_packets = None
     runThread = True
+    rgb_manual_focus = 0
 
     def reset_process_wd(self):
         global wd_cutoff
@@ -152,10 +153,12 @@ class DepthAI:
             return
 
         def keypress_handler(self, key, stream_names):
+            cam_c = depthai.CameraControl.CamId.RGB
             cam_l = depthai.CameraControl.CamId.LEFT
             cam_r = depthai.CameraControl.CamId.RIGHT
             cmd_ae_region = depthai.CameraControl.Command.AE_REGION
             cmd_exp_comp  = depthai.CameraControl.Command.EXPOSURE_COMPENSATION
+            cmd_set_focus = depthai.CameraControl.Command.MOVE_LENS
             keypress_handler_lut = {
                 ord('f'): lambda: self.device.request_af_trigger(),
                 ord('1'): lambda: self.device.request_af_mode(depthai.AutofocusMode.AF_MODE_AUTO),
@@ -175,6 +178,14 @@ class DepthAI:
                     self.device.request_jpeg()
                 else:
                     print("'jpegout' stream not enabled. Try settings -s jpegout to enable it")
+            elif key == ord(',') or key == ord('.'):
+                rgb_focus_step = 3
+                if key == ord(','): self.rgb_manual_focus -= rgb_focus_step
+                if key == ord('.'): self.rgb_manual_focus += rgb_focus_step
+                if self.rgb_manual_focus < 0:   self.rgb_manual_focus = 0
+                if self.rgb_manual_focus > 255: self.rgb_manual_focus = 255
+                print("==================================== RGB set focus [0..255], current:", self.rgb_manual_focus)
+                self.device.send_camera_control(cam_c, cmd_set_focus, str(self.rgb_manual_focus))
             return
 
         for stream in stream_names:
