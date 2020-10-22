@@ -13,20 +13,27 @@
 # limitations under the License.
 
 import collections
+import concurrent.futures
 import contextlib
 import fnmatch
 import json
+import platform
+import queue
 import re
 import shlex
 import shutil
+import subprocess
 import sys
+import threading
 import traceback
 
 from pathlib import Path
 
+import requests
 import yaml
 
 DOWNLOAD_TIMEOUT = 5 * 60
+MODEL_ROOT = Path(__file__).resolve().parents[2] / 'models'
 
 # make sure to update the documentation if you modify these
 KNOWN_FRAMEWORKS = {
@@ -46,73 +53,173 @@ KNOWN_PRECISIONS = {
 KNOWN_TASK_TYPES = {
     'action_recognition',
     'classification',
+    'colorization',
     'detection',
     'face_recognition',
     'feature_extraction',
     'head_pose_estimation',
     'human_pose_estimation',
+    'image_inpainting',
     'image_processing',
     'instance_segmentation',
+    'monocular_depth_estimation',
     'object_attributes',
     'optical_character_recognition',
+    'question_answering',
     'semantic_segmentation',
+    'style_transfer',
 }
+
+KNOWN_QUANTIZED_PRECISIONS = {p + '-INT8': p for p in ['FP16', 'FP32']}
+assert KNOWN_QUANTIZED_PRECISIONS.keys() <= KNOWN_PRECISIONS
 
 RE_MODEL_NAME = re.compile(r'[0-9a-zA-Z._-]+')
 RE_SHA256SUM = re.compile(r'[0-9a-fA-F]{64}')
+
+
+class JobContext:
+    def __init__(self):
+        self._interrupted = False
+
+    def print(self, value, *, end='\n', file=sys.stdout, flush=False):
+        raise NotImplementedError
+
+    def printf(self, format, *args, file=sys.stdout, flush=False):
+        self.print(format.format(*args), file=file, flush=flush)
+
+    def subprocess(self, args, **kwargs):
+        raise NotImplementedError
+
+    def check_interrupted(self):
+        if self._interrupted:
+            raise RuntimeError("job interrupted")
+
+    def interrupt(self):
+        self._interrupted = True
+
+
+class DirectOutputContext(JobContext):
+    def print(self, value, *, end='\n', file=sys.stdout, flush=False):
+        print(value, end=end, file=file, flush=flush)
+
+    def subprocess(self, args, **kwargs):
+        return subprocess.run(args, **kwargs).returncode == 0
+
+
+class QueuedOutputContext(JobContext):
+    def __init__(self, output_queue):
+        super().__init__()
+        self._output_queue = output_queue
+
+    def print(self, value, *, end='\n', file=sys.stdout, flush=False):
+        self._output_queue.put((file, value + end))
+
+    def subprocess(self, args, **kwargs):
+        with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                universal_newlines=True, **kwargs) as p:
+            for line in p.stdout:
+                self._output_queue.put((sys.stdout, line))
+            return p.wait() == 0
+
+
+class JobWithQueuedOutput():
+    def __init__(self, context, output_queue, future):
+        self._context = context
+        self._output_queue = output_queue
+        self._future = future
+        self._future.add_done_callback(lambda future: self._output_queue.put(None))
+
+    def complete(self):
+        for file, fragment in iter(self._output_queue.get, None):
+            print(fragment, end='', file=file, flush=True) # for simplicity, flush every fragment
+
+        return self._future.result()
+
+    def cancel(self):
+        self._context.interrupt()
+        self._future.cancel()
+
+
+def run_in_parallel(num_jobs, f, work_items):
+    with concurrent.futures.ThreadPoolExecutor(num_jobs) as executor:
+        def start(work_item):
+            output_queue = queue.Queue()
+            context = QueuedOutputContext(output_queue)
+            return JobWithQueuedOutput(
+                context, output_queue, executor.submit(f, context, work_item))
+
+        jobs = list(map(start, work_items))
+
+        try:
+            return [job.complete() for job in jobs]
+        except:
+            for job in jobs: job.cancel()
+            raise
+
+EVENT_EMISSION_LOCK = threading.Lock()
 
 class Reporter:
     GROUP_DECORATION = '#' * 16 + '||'
     SECTION_DECORATION = '=' * 10
     ERROR_DECORATION = '#' * 10
 
-    def __init__(self, enable_human_output=True, enable_json_output=False, event_context={}):
+    def __init__(self, job_context, *,
+            enable_human_output=True, enable_json_output=False, event_context={}):
+        self.job_context = job_context
         self.enable_human_output = enable_human_output
         self.enable_json_output = enable_json_output
         self.event_context = event_context
 
     def print_group_heading(self, text):
         if not self.enable_human_output: return
-        print(self.GROUP_DECORATION, text, self.GROUP_DECORATION[::-1])
-        print()
+        self.job_context.printf('{} {} {}', self.GROUP_DECORATION, text, self.GROUP_DECORATION[::-1])
+        self.job_context.print('')
 
     def print_section_heading(self, format, *args):
         if not self.enable_human_output: return
-        print(self.SECTION_DECORATION, format.format(*args), flush=True)
+        self.job_context.printf('{} {}', self.SECTION_DECORATION, format.format(*args), flush=True)
 
     def print_progress(self, format, *args):
         if not self.enable_human_output: return
-        print(format.format(*args), end='\r' if sys.stdout.isatty() else '\n', flush=True)
+        self.job_context.print(format.format(*args), end='\r' if sys.stdout.isatty() else '\n', flush=True)
 
     def end_progress(self):
         if not self.enable_human_output: return
         if sys.stdout.isatty():
-            print()
+            self.job_context.print('')
 
     def print(self, format='', *args, flush=False):
         if not self.enable_human_output: return
-        print(format.format(*args), flush=flush)
+        self.job_context.printf(format, *args, flush=flush)
 
     def log_warning(self, format, *args, exc_info=False):
         if exc_info:
-            traceback.print_exc(file=sys.stderr)
-        print(self.ERROR_DECORATION, "Warning:", format.format(*args), file=sys.stderr)
+            self.job_context.print(traceback.format_exc(), file=sys.stderr, end='')
+        self.job_context.printf("{} Warning: {}", self.ERROR_DECORATION, format.format(*args), file=sys.stderr)
 
     def log_error(self, format, *args, exc_info=False):
         if exc_info:
-            traceback.print_exc(file=sys.stderr)
-        print(self.ERROR_DECORATION, "Error:", format.format(*args), file=sys.stderr)
+            self.job_context.print(traceback.format_exc(), file=sys.stderr, end='')
+        self.job_context.printf("{} Error: {}", self.ERROR_DECORATION, format.format(*args), file=sys.stderr)
 
     def log_details(self, format, *args):
         print(self.ERROR_DECORATION, '    ', format.format(*args), file=sys.stderr)
 
     def emit_event(self, type, **kwargs):
         if not self.enable_json_output: return
-        json.dump({'$type': type, **self.event_context, **kwargs}, sys.stdout, indent=None)
-        print()
+
+        # We don't print machine-readable output through the job context, because
+        # we don't want it to be serialized. If we serialize it, then the consumer
+        # will lose information about the order of events, and we don't want that to happen.
+        # Instead, we emit events directly to stdout, but use a lock to ensure that
+        # JSON texts don't get interleaved.
+        with EVENT_EMISSION_LOCK:
+            json.dump({'$type': type, **self.event_context, **kwargs}, sys.stdout, indent=None)
+            print()
 
     def with_event_context(self, **kwargs):
         return Reporter(
+            self.job_context,
             enable_human_output=self.enable_human_output,
             enable_json_output=self.enable_json_output,
             event_context={**self.event_context, **kwargs},
@@ -174,6 +281,8 @@ class FileSource(TaggedBase):
         return super().deserialize(source)
 
 class FileSourceHttp(FileSource):
+    RE_CONTENT_RANGE_VALUE = re.compile(r'bytes (\d+)-\d+/(?:\d+|\*)')
+
     def __init__(self, url):
         self.url = url
 
@@ -181,11 +290,30 @@ class FileSourceHttp(FileSource):
     def deserialize(cls, source):
         return cls(validate_string('"url"', source['url']))
 
-    def start_download(self, session, chunk_size):
-        response = session.get(self.url, stream=True, timeout=DOWNLOAD_TIMEOUT)
+    def start_download(self, session, chunk_size, offset):
+        headers = {}
+        if offset != 0:
+            headers['Range'] = 'bytes={}-'.format(offset)
+
+        response = session.get(self.url, stream=True, timeout=DOWNLOAD_TIMEOUT, headers=headers)
         response.raise_for_status()
 
-        return response.iter_content(chunk_size=chunk_size)
+        if response.status_code == requests.codes.partial_content:
+            match = self.RE_CONTENT_RANGE_VALUE.fullmatch(response.headers.get('Content-Range', ''))
+            if not match:
+                # invalid range reply; return a negative offset to make
+                # the download logic restart the download.
+                return None, -1
+
+            return response.iter_content(chunk_size=chunk_size), int(match.group(1))
+
+        # either we didn't ask for a range, or the server doesn't support ranges
+
+        if 'Content-Range' in response.headers:
+            # non-partial responses aren't supposed to have range information
+            return None, -1
+
+        return response.iter_content(chunk_size=chunk_size), 0
 
 FileSource.types['http'] = FileSourceHttp
 
@@ -197,7 +325,8 @@ class FileSourceGoogleDrive(FileSource):
     def deserialize(cls, source):
         return cls(validate_string('"id"', source['id']))
 
-    def start_download(self, session, chunk_size):
+    def start_download(self, session, chunk_size, offset):
+        # for now the offset is ignored; TODO: try to implement resumption
         URL = 'https://docs.google.com/uc?export=download'
         response = session.get(URL, params={'id' : self.id}, stream=True, timeout=DOWNLOAD_TIMEOUT)
         response.raise_for_status()
@@ -208,7 +337,7 @@ class FileSourceGoogleDrive(FileSource):
                 response = session.get(URL, params=params, stream=True, timeout=DOWNLOAD_TIMEOUT)
                 response.raise_for_status()
 
-        return response.iter_content(chunk_size=chunk_size)
+        return response.iter_content(chunk_size=chunk_size), 0
 
 FileSource.types['google_drive'] = FileSourceGoogleDrive
 
@@ -304,13 +433,14 @@ class PostprocUnpackArchive(Postproc):
 Postproc.types['unpack_archive'] = PostprocUnpackArchive
 
 class Model:
-    def __init__(self, name, subdirectory, files, postprocessing, mo_args, framework,
+    def __init__(self, name, subdirectory, files, postprocessing, mo_args, quantizable, framework,
                  description, license_url, precisions, task_type, conversion_to_onnx_args):
         self.name = name
         self.subdirectory = subdirectory
         self.files = files
         self.postprocessing = postprocessing
         self.mo_args = mo_args
+        self.quantizable = quantizable
         self.framework = framework
         self.description = description
         self.license_url = license_url
@@ -386,61 +516,45 @@ class Model:
 
                 precisions = set(files_per_precision.keys())
 
+            quantizable = model.get('quantizable', False)
+            if not isinstance(quantizable, bool):
+                raise DeserializationError('"quantizable": expected a boolean, got {!r}'.format(quantizable))
+
             description = validate_string('"description"', model['description'])
 
             license_url = validate_string('"license"', model['license'])
 
             task_type = validate_string_enum('"task_type"', model['task_type'], KNOWN_TASK_TYPES)
 
-            return cls(name, subdirectory, files, postprocessing, mo_args, framework,
+            return cls(name, subdirectory, files, postprocessing, mo_args, quantizable, framework,
                 description, license_url, precisions, task_type, conversion_to_onnx_args)
 
 def load_models(args):
     models = []
     model_names = set()
 
-    def add_model(model):
-        models.append(model)
+    ##lux
+    if args.model_root is not None:
+        MODEL_ROOT = Path(args.model_root)
 
-        if models[-1].name in model_names:
-            raise DeserializationError(
-                'Duplicate model name "{}"'.format(models[-1].name))
-        model_names.add(models[-1].name)
+    for config_path in sorted(MODEL_ROOT.glob('**/model.yml')):
+        subdirectory = config_path.parent.relative_to(MODEL_ROOT)
 
-    if args.config is None: # per-model configs
-        if args.model_root is None:
-            model_root = (Path(__file__).resolve().parent / './models/luxonis').resolve()
-        else:
-            model_root = Path(args.model_root)
+        with config_path.open('rb') as config_file, \
+                deserialization_context('In config "{}"'.format(config_path)):
 
-        for config_path in sorted(model_root.glob('**/model.yml')):
-            subdirectory = config_path.parent.relative_to(model_root)
+            model = yaml.safe_load(config_file)
 
-            with config_path.open('rb') as config_file, \
-                    deserialization_context('In config "{}"'.format(config_path)):
+            for bad_key in ['name', 'subdirectory']:
+                if bad_key in model:
+                    raise DeserializationError('Unsupported key "{}"'.format(bad_key))
 
-                model = yaml.safe_load(config_file)
+            models.append(Model.deserialize(model, subdirectory.name, subdirectory))
 
-                for bad_key in ['name', 'subdirectory']:
-                    if bad_key in model:
-                        raise DeserializationError('Unsupported key "{}"'.format(bad_key))
-
-                add_model(Model.deserialize(model, subdirectory.name, subdirectory))
-
-    else: # monolithic config
-        print('########## Warning: the --config option is deprecated and will be removed in a future release',
-            file=sys.stderr)
-        with args.config.open('rb') as config_file, \
-                deserialization_context('In config "{}"'.format(args.config)):
-            for i, model in enumerate(yaml.safe_load(config_file)['topologies']):
-                with deserialization_context('In model #{}'.format(i)):
-                    name = validate_string('"name"', model['name'])
-                    if not name: raise DeserializationError('"name": must not be empty')
-
-                with deserialization_context('In model "{}"'.format(name)):
-                    subdirectory = validate_relative_path('"output"', model['output'])
-
-                add_model(Model.deserialize(model, name, subdirectory))
+            if models[-1].name in model_names:
+                raise DeserializationError(
+                    'Duplicate model name "{}"'.format(models[-1].name))
+            model_names.add(models[-1].name)
 
     return models
 
@@ -501,3 +615,17 @@ def load_models_from_args(parser, args):
                 models[model.name] = model
 
         return list(models.values())
+
+def quote_arg_windows(arg):
+    if not arg: return '""'
+    if not re.search(r'\s|"', arg): return arg
+    # On Windows, only backslashes that precede a quote or the end of the argument must be escaped.
+    return '"' + re.sub(r'(\\+)$', r'\1\1', re.sub(r'(\\*)"', r'\1\1\\"', arg)) + '"'
+
+if platform.system() == 'Windows':
+    quote_arg = quote_arg_windows
+else:
+    quote_arg = shlex.quote
+
+def command_string(args):
+    return ' '.join(map(quote_arg, args))

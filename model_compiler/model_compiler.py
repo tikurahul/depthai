@@ -3,8 +3,10 @@ import numpy as np
 from pathlib import Path
 import os, sys
 import requests
+import json
 
-supported_openvino_version = '2020.1.023'
+
+supported_openvino_version = '2020.4'
 
 def relative_to_abs_path(relative_path):
     dirname = Path(__file__).parent
@@ -67,9 +69,26 @@ def myriad_compile_model_local(shaves, cmx_slices, nces, xml_path, output_file):
             sys.exit('Unable to locate Model Optimizer. '
                 + 'Use --mo or run setupvars.sh/setupvars.bat from the OpenVINO toolkit.')
 
-    PLATFORM="VPU_MYRIAD_2450" if nces == 0 else "VPU_MYRIAD_2480"
+    config_file_content = {
+        'VPU_MYRIAD_PLATFORM' : 'VPU_MYRIAD_2450' if nces == 0 else 'VPU_MYRIAD_2480',
+        'VPU_NUMBER_OF_SHAVES' : shaves,
+        'VPU_NUMBER_OF_CMX_SLICES' : cmx_slices,
+        'VPU_MYRIAD_THROUGHPUT_STREAMS' : nces
+    }
 
-    myriad_compiler_options = f'-ip U8 -VPU_MYRIAD_PLATFORM {PLATFORM} -VPU_NUMBER_OF_SHAVES {shaves} -VPU_NUMBER_OF_CMX_SLICES {cmx_slices} -m {xml_path} -o {output_file}'
+    parent_dir = Path(xml_path).resolve().parents[0]
+    config_file = parent_dir / 'myriad_compile_config.txt'
+    
+    print(f'Myriad config file {config_file}')
+    with open(config_file, "w") as fp:
+        for k, v in config_file_content.items():
+            fp.write(str(k) + ' '+ str(v) + '\t\n')
+
+    with open(config_file, "r") as fp:
+        print(fp.read())
+
+
+    myriad_compiler_options = f'-ip U8 -c {config_file} -m {xml_path} -o {output_file}'
     myriad_compiler_options = myriad_compiler_options.split()
 
     myriad_compile_cmd = np.concatenate(([myriad_compile_path], myriad_compiler_options))
@@ -79,8 +98,6 @@ def myriad_compile_model_local(shaves, cmx_slices, nces, xml_path, output_file):
         raise RuntimeError("Myriad compiler failed!")
     
     return 0
-
-
 
 def myriad_compile_model_cloud(xml, bin, shaves, cmx_slices, nces, output_file):
     PLATFORM="VPU_MYRIAD_2450" if nces == 0 else "VPU_MYRIAD_2480"
@@ -125,6 +142,8 @@ def download_and_compile_NN_model(model, model_zoo_folder, shaves, cmx_slices, n
                 print(f'Unsupported openvino version installed at {openvino_dir}, supported version is: {supported_openvino_version}')
 
         except:
+            if model_compilation_target == 'local':
+                sys.exit(f'Local model compilation was explicitly requested, but openvino installation is not found. Environemnt variables not set for openvino? Supported version: {supported_openvino_version}')
             model_compilation_target = 'cloud'
     
     print(f'model_compilation_target: {model_compilation_target}')

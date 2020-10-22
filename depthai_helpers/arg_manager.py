@@ -87,7 +87,8 @@ class CliArgs:
         parser.add_argument("-nce", "--NN_engines", default=None, type=int, choices=[1, 2], metavar="[1-2]",
                             help="Number of NN_engines used by NN.")
 
-        parser.add_argument("-mct", "--model-compilation-target", default="auto",
+        #temp
+        parser.add_argument("-mct", "--model-compilation-target", default="local",
                             type=str, required=False, choices=["auto","local","cloud"],
                             help="Compile model lcoally or in cloud?")
 
@@ -176,7 +177,8 @@ class CliArgs:
                             help="USB transfer chunk on device. Higher (up to megabytes) "
                             "may improve throughput, or 0 to disable chunking. Default: %(default)s")
 
-        parser.add_argument("-fw", "--firmware", default=None, type=str,
+        #temporary
+        parser.add_argument("-fw", "--firmware", default='1cd38a3054e030aebbe463eb1113b015bcd108e5', type=str,
                             help="Commit hash for custom FW, downloaded from Artifactory")
 
         parser.add_argument("-vv", "--verbose", default=False, action="store_true",
