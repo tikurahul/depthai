@@ -178,7 +178,7 @@ class CliArgs:
                             "may improve throughput, or 0 to disable chunking. Default: %(default)s")
 
         #temporary
-        parser.add_argument("-fw", "--firmware", default='1cd38a3054e030aebbe463eb1113b015bcd108e5', type=str,
+        parser.add_argument("-fw", "--firmware", default='4541041b6a4c41dfbc4060a035626f368e1ee4f4', type=str,
                             help="Commit hash for custom FW, downloaded from Artifactory")
 
         parser.add_argument("-vv", "--verbose", default=False, action="store_true",

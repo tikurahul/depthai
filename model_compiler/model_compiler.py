@@ -6,7 +6,7 @@ import requests
 import json
 
 
-supported_openvino_version = '2020.4'
+supported_openvino_version = '2021.1'
 
 def relative_to_abs_path(relative_path):
     dirname = Path(__file__).parent
@@ -70,10 +70,9 @@ def myriad_compile_model_local(shaves, cmx_slices, nces, xml_path, output_file):
                 + 'Use --mo or run setupvars.sh/setupvars.bat from the OpenVINO toolkit.')
 
     config_file_content = {
-        'VPU_MYRIAD_PLATFORM' : 'VPU_MYRIAD_2450' if nces == 0 else 'VPU_MYRIAD_2480',
-        'VPU_NUMBER_OF_SHAVES' : shaves,
-        'VPU_NUMBER_OF_CMX_SLICES' : cmx_slices,
-        'VPU_MYRIAD_THROUGHPUT_STREAMS' : nces
+        'MYRIAD_NUMBER_OF_SHAVES' : shaves,
+        'MYRIAD_NUMBER_OF_CMX_SLICES' : cmx_slices,
+        'MYRIAD_THROUGHPUT_STREAMS' : nces
     }
 
     parent_dir = Path(xml_path).resolve().parents[0]
@@ -92,7 +91,7 @@ def myriad_compile_model_local(shaves, cmx_slices, nces, xml_path, output_file):
     myriad_compiler_options = myriad_compiler_options.split()
 
     myriad_compile_cmd = np.concatenate(([myriad_compile_path], myriad_compiler_options))
-    # print(myriad_compile_cmd)
+    print(myriad_compile_cmd)
     
     if subprocess.run(myriad_compile_cmd).returncode != 0:
         raise RuntimeError("Myriad compiler failed!")
