@@ -130,7 +130,7 @@ def myriad_compile_model_cloud(xml, bin, shaves, cmx_slices, nces, output_file):
 
 def download_and_compile_NN_model(model, model_zoo_folder, shaves, cmx_slices, nces, output_file, model_compilation_target='auto'):
 
-    if model_compilation_target == 'auto' or model_compilation_target == 'local':
+    if model_compilation_target == 'auto':
         try:
             openvino_dir = os.environ['INTEL_OPENVINO_DIR']
             print(f'Openvino installation detected {openvino_dir}') 
@@ -142,8 +142,6 @@ def download_and_compile_NN_model(model, model_zoo_folder, shaves, cmx_slices, n
                 print(f'Unsupported openvino version installed at {openvino_dir}, supported version is: {supported_openvino_version}')
 
         except:
-            if model_compilation_target == 'local':
-                sys.exit(f'Local model compilation was explicitly requested, but openvino installation is not found. Environemnt variables not set for openvino? Supported version: {supported_openvino_version}')
             model_compilation_target = 'cloud'
     
     print(f'model_compilation_target: {model_compilation_target}')
