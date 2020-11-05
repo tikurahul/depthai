@@ -6,6 +6,14 @@ import requests
 
 supported_openvino_version = '2020.1'
 
+def subprocess_helper(cmd):
+    version = int(sys.version.split()[0].split('.')[1])
+    if version < 7:
+        result = subprocess.run(cmd)
+    else :
+        result = subprocess.run(cmd, capture_output=True)
+    return result
+
 def relative_to_abs_path(relative_path):
     dirname = Path(__file__).parent
     try:
@@ -24,12 +32,8 @@ def download_model(model, model_zoo_folder):
     model_downloader_options = model_downloader_options.split()
     downloader_cmd = [sys.executable, f"{model_downloader_path}"]
     downloader_cmd = np.concatenate((downloader_cmd, model_downloader_options))
-    version = int(sys.version.split()[0].split('.')[1])
     # print(downloader_cmd)
-    if version < 7:
-        result = subprocess.run(downloader_cmd, check=True)
-    else :
-        result = subprocess.run(downloader_cmd, capture_output=True)
+    result = subprocess_helper(downloader_cmd)
     if result.returncode != 0:
         raise RuntimeError(f"Model downloader failed! Error: {result.stderr}")
     
@@ -45,13 +49,12 @@ def download_model(model, model_zoo_folder):
 def convert_model_to_ir(model, model_zoo_folder):
 
     converter_path = Path(ir_converter_path)
-
     model_converter_options=f"--precisions FP16 --output_dir {download_folder_path} --download_dir {download_folder_path} --name {model} --model_root {model_zoo_folder}"
     model_converter_options = model_converter_options.split()
     converter_cmd = [sys.executable, f"{converter_path}"]
     converter_cmd = np.concatenate((converter_cmd, model_converter_options))
     # print(converter_cmd)
-    result = subprocess.run(converter_cmd, capture_output=True)
+    result = subprocess_helper(converter_cmd)
     if result.returncode != 0:
         raise RuntimeError(f"Model converter failed! Error: {result.stderr}")
     
@@ -80,7 +83,7 @@ def myriad_compile_model_local(shaves, cmx_slices, nces, xml_path, output_file):
     myriad_compile_cmd = np.concatenate(([myriad_compile_path], myriad_compiler_options))
     # print(myriad_compile_cmd)
 
-    result = subprocess.run(myriad_compile_cmd, capture_output=True)
+    result = subprocess_helper(myriad_compile_cmd)
     if result.returncode != 0:
         raise RuntimeError(f"Myriad compiler failed! Error: {result.stderr}")
     
