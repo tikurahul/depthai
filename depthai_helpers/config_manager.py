@@ -14,7 +14,7 @@ from depthai_helpers.cli_utils import cli_print, PrintColors
 class DepthConfigManager:
     labels = ""
     NN_config = None
-    custom_fw_commit = 'f3a3f159d82f7214b8ab514ab32acf92000c02be'
+    custom_fw_commit = 'bb1172395e607c0368c2d1882f99facf1d3c2afc'
 
     def __init__(self, args):
         self.args = args
