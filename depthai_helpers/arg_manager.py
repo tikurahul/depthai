@@ -3,7 +3,7 @@ import argparse
 try:
     import argcomplete
 except ImportError:
-    raise ImportError('\033[1;5;31m argcomplete module not found, run python3 -m pip install -r requirements.txt \033[0m')
+    raise ImportError('\033[1;5;31m argcomplete module not found, run: python3 install_requirements.py \033[0m')
 from argcomplete.completers import ChoicesCompleter
 
 from depthai_helpers.cli_utils import cli_print, PrintColors
@@ -84,8 +84,12 @@ class CliArgs:
         parser.add_argument("-cmx", "--cmx_slices", default=None, type=int, choices=range(1,15), metavar="[1-14]",
                             help="Number of cmx slices used by NN.")
 
-        parser.add_argument("-nce", "--NN_engines", default=None, type=int, choices=range(0,3), metavar="[0-2]",
+        parser.add_argument("-nce", "--NN_engines", default=None, type=int, choices=[1, 2], metavar="[1-2]",
                             help="Number of NN_engines used by NN.")
+
+        parser.add_argument("-mct", "--model-compilation-target", default="auto",
+                            type=str, required=False, choices=["auto","local","cloud"],
+                            help="Compile model lcoally or in cloud?")
 
         parser.add_argument("-rgbr", "--rgb_resolution", default=1080, type=int, choices=[1080, 2160, 3040],
                             help="RGB cam res height: (1920x)1080, (3840x)2160 or (4056x)3040. Default: %(default)s")
@@ -172,7 +176,7 @@ class CliArgs:
                             help="USB transfer chunk on device. Higher (up to megabytes) "
                             "may improve throughput, or 0 to disable chunking. Default: %(default)s")
 
-        parser.add_argument("-fw", "--firmware", default="", type=str,
+        parser.add_argument("-fw", "--firmware", default=None, type=str,
                             help="Commit hash for custom FW, downloaded from Artifactory")
 
         parser.add_argument("-vv", "--verbose", default=False, action="store_true",
