@@ -9,7 +9,10 @@ def decode_mobilenet_ssd(nnet_packet, **kwargs):
     config = kwargs['config']
 
     detections_list = []
-
+    res = nnet_packet.get_tensor(0)
+    _sum = np.sum(res)
+    if _sum:
+        print(_sum)
     print("=====decode me")
     return []
 
