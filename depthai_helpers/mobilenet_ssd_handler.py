@@ -9,6 +9,10 @@ def decode_mobilenet_ssd(nnet_packet, **kwargs):
     config = kwargs['config']
 
     detections_list = []
+
+    print("=====decode me")
+    return []
+
     if output_format == "detection":
         detections = nnet_packet.getDetectedObjects()
         for detection in detections:
@@ -99,6 +103,10 @@ def average_depth_coord(pt1, pt2, padding_factor):
 
 
 def show_mobilenet_ssd(detections, frame, **kwargs):
+    print("----draw me")
+
+    return frame
+
     is_depth = 'nn2depth' in kwargs
     if is_depth:
         nn2depth = kwargs['nn2depth']
