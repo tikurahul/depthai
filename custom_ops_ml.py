@@ -34,7 +34,7 @@ if __name__ == "__main__":
         # Returns a list
         layer = frame.getFirstLayerFp16()
         layer = np.array(layer, dtype=np.uint8)
-        shape = (300, 300, 1)
+        shape = (300, 300, 3)
         frame_data = layer.reshape(shape)
         cv2.imshow('Image', frame_data)
         if cv2.waitKey(1) == ord('q'):

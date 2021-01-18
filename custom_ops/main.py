@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import torch
 
-from grayscale.model import GrayscaleModel
+from custom_models.model import GrayscaleModel, GaussianBlur
 
 
 def export():
@@ -20,8 +20,8 @@ def export_onnx(output_dir):
     """
     # Channels Last
     shape = (1, 300, 300, 3)
-    model = GrayscaleModel(shape=shape, dtype=torch.float)
-    X = torch.ones(shape, dtype=torch.float)
+    model = GaussianBlur(shape=shape, dtype=torch.float)
+    X = torch.ones(shape, dtype=torch.uint8)
     torch.onnx.export(
         model,
         X,
@@ -38,12 +38,13 @@ def preview():
         _, color = capture.read()
         if not model:
             shape = (1, ) + color.shape
-            model = GrayscaleModel(shape=shape, dtype=torch.uint8)
+            model = GaussianBlur(shape=shape, dtype=torch.uint8).eval()
 
         # Numpy -> torch.Tensor
+        cv2.imshow('Original', color)
         color = torch.from_numpy(color)
         color = torch.unsqueeze(color, dim=0)
-        out = model(color)[0].numpy()
+        out = model(color)[0].detach().numpy()
         # Channels Last
         out = out.astype(np.uint8)
         cv2.imshow('Gray', out)
